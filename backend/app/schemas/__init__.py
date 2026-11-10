@@ -1,3 +1,3 @@
-from app.schemas.health import HealthResponse
+from app.schemas.health import HealthResponse, LivenessResponse, ReadinessResponse
 
-__all__ = ["HealthResponse"]
+__all__ = ["HealthResponse", "LivenessResponse", "ReadinessResponse"]

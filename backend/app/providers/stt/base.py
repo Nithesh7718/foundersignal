@@ -59,8 +59,7 @@ class MockGnaniPrismaSTTProvider(STTProvider):
             language=language,
             total_duration=12.5,
             full_transcript=(
-                "Let's ensure the onboarding flow is ready by Thursday "
-                "before client review."
+                "Let's ensure the onboarding flow is ready by Thursday before client review."
             ),
             segments=[
                 TranscriptSegment(
@@ -117,6 +116,8 @@ class GnaniPrismaSTTProvider(STTProvider):
 
 def get_stt_provider() -> STTProvider:
     """Factory for selecting STT provider based on configuration."""
+    if settings.is_production and settings.MOCK_PROVIDERS:
+        raise RuntimeError("Mock STT provider cannot be used in production mode.")
     if settings.MOCK_PROVIDERS:
         return MockGnaniPrismaSTTProvider()
     return GnaniPrismaSTTProvider(

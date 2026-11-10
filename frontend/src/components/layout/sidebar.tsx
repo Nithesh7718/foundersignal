@@ -11,10 +11,11 @@ import {
   Network,
   Settings,
   ShieldCheck,
+  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
-interface NavItem {
+export interface NavItem {
   name: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
@@ -22,7 +23,7 @@ interface NavItem {
   badge?: string;
 }
 
-const navItems: NavItem[] = [
+export const navItems: NavItem[] = [
   { name: "Dashboard", href: "#", icon: LayoutDashboard, active: true },
   { name: "Conversations & Audio", href: "#", icon: Mic },
   { name: "Extracted Commitments", href: "#", icon: FileText },
@@ -32,23 +33,39 @@ const navItems: NavItem[] = [
   { name: "Settings", href: "#", icon: Settings },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  onClose?: () => void;
+  className?: string;
+}
+
+export function SidebarContent({ onClose }: { onClose?: () => void }) {
   return (
-    <aside className="w-64 border-r bg-card flex flex-col justify-between shrink-0 min-h-screen">
+    <div className="flex flex-col justify-between h-full">
       <div>
         {/* Brand Header */}
-        <div className="h-16 flex items-center px-6 border-b gap-3">
-          <div className="h-9 w-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold shadow-sm">
-            <Activity className="h-5 w-5" />
+        <div className="h-16 flex items-center justify-between px-6 border-b">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold shadow-sm">
+              <Activity className="h-5 w-5" />
+            </div>
+            <div>
+              <span className="font-bold text-base tracking-tight text-foreground block leading-tight">
+                FounderSignal
+              </span>
+              <span className="text-[11px] text-muted-foreground font-medium block">
+                AI Operating Companion
+              </span>
+            </div>
           </div>
-          <div>
-            <span className="font-bold text-base tracking-tight text-foreground block leading-tight">
-              FounderSignal
-            </span>
-            <span className="text-[11px] text-muted-foreground font-medium block">
-              AI Operating Companion
-            </span>
-          </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              aria-label="Close navigation menu"
+              className="p-1 rounded-md text-muted-foreground hover:text-foreground md:hidden"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          )}
         </div>
 
         {/* Navigation Items */}
@@ -59,6 +76,7 @@ export function Sidebar() {
               <a
                 key={item.name}
                 href={item.href}
+                onClick={onClose}
                 className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                   item.active
                     ? "bg-primary/10 text-primary"
@@ -88,7 +106,7 @@ export function Sidebar() {
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
           <span className="text-xs font-semibold text-foreground">
-            Phase 1: Foundation
+            Phase 1.5: Hardened Foundation
           </span>
         </div>
         <p className="text-[11px] text-muted-foreground leading-relaxed flex items-center gap-1.5">
@@ -96,6 +114,14 @@ export function Sidebar() {
           Evidence-first operating companion initialized.
         </p>
       </div>
+    </div>
+  );
+}
+
+export function Sidebar({ className = "" }: SidebarProps) {
+  return (
+    <aside className={`w-64 border-r bg-card shrink-0 min-h-screen ${className}`}>
+      <SidebarContent />
     </aside>
   );
 }

@@ -87,6 +87,8 @@ class TimbreTTSProvider(TTSProvider):
 
 def get_tts_provider() -> TTSProvider:
     """Factory for selecting TTS provider based on configuration."""
+    if settings.is_production and settings.MOCK_PROVIDERS:
+        raise RuntimeError("Mock TTS provider cannot be used in production mode.")
     if settings.MOCK_PROVIDERS:
         return MockTimbreTTSProvider()
     return TimbreTTSProvider(

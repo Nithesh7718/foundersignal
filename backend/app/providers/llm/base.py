@@ -3,6 +3,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.core.config import settings
+from app.core.exceptions import ExternalProviderException
 from app.providers.base import BaseProvider
 
 
@@ -79,4 +81,26 @@ class MockLLMProvider(LLMProvider):
 
 def get_llm_provider() -> LLMProvider:
     """Factory for selecting LLM provider based on configuration."""
-    return MockLLMProvider()
+    if settings.is_production and (
+        settings.MOCK_PROVIDERS or settings.LLM_PROVIDER.lower() == "mock"
+    ):
+        raise RuntimeError("Mock LLM provider cannot be used in production mode.")
+
+    if settings.MOCK_PROVIDERS or settings.LLM_PROVIDER.lower() == "mock":
+        return MockLLMProvider()
+
+    if settings.LLM_PROVIDER.lower() in ["openai", "anthropic", "gemini"]:
+        if not settings.LLM_API_KEY:
+            raise ExternalProviderException(
+                provider=settings.LLM_PROVIDER,
+                message=f"API key for LLM provider '{settings.LLM_PROVIDER}' is not configured.",
+            )
+        raise NotImplementedError(
+            f"Production adapter for LLM provider '{settings.LLM_PROVIDER}' "
+            "requires live API credentials."
+        )
+
+    raise ExternalProviderException(
+        provider="llm",
+        message=f"Unsupported LLM provider '{settings.LLM_PROVIDER}'.",
+    )

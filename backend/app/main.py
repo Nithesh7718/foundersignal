@@ -82,17 +82,16 @@ async def validation_exception_handler(
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     logger.error(f"Unhandled server error: {exc}", exc_info=True)
-    message = "Internal server error occurred."
     details = {}
     if not settings.is_production:
-        details = {"error_type": type(exc).__name__, "error_detail": str(exc)}
+        details = {"error_type": type(exc).__name__}
 
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "error": {
                 "code": "INTERNAL_SERVER_ERROR",
-                "message": message,
+                "message": "An unexpected error occurred. Please contact system support.",
                 "details": details,
             }
         },
