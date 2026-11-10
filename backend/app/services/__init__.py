@@ -1,4 +1,5 @@
-"""Business services layer for FounderSignal.
+from app.services.auth_service import AuthService
+from app.services.conversation_service import ConversationService
+from app.services.workspace_service import WorkspaceService
 
-Orchestrates commitment tracking, fact extraction, and founder approval workflows.
-"""
+__all__ = ["AuthService", "WorkspaceService", "ConversationService"]

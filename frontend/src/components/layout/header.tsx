@@ -1,14 +1,25 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
+import {
+  AlertCircle,
+  Building,
+  CheckCircle2,
+  LogOut,
+  Menu,
+  RefreshCw,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, Bell, CheckCircle2, Menu, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/lib/auth-context";
 
 interface HeaderProps {
   onOpenMobileMenu?: () => void;
 }
 
 export function Header({ onOpenMobileMenu }: HeaderProps) {
+  const { user, workspaces, activeWorkspace, setActiveWorkspace, logout } = useAuth();
   const [apiStatus, setApiStatus] = useState<"checking" | "connected" | "disconnected">("checking");
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -76,6 +87,31 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-3 sm:gap-4">
+        {/* Workspace Selector Indicator */}
+        {user && activeWorkspace && (
+          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border bg-muted/30 text-xs font-medium">
+            <Building className="h-3.5 w-3.5 text-primary" />
+            {workspaces.length > 1 ? (
+              <select
+                value={activeWorkspace.id}
+                onChange={(e) => {
+                  const ws = workspaces.find((w) => w.id === e.target.value);
+                  if (ws) setActiveWorkspace(ws);
+                }}
+                className="bg-transparent border-none text-xs font-medium text-foreground focus:outline-none cursor-pointer"
+              >
+                {workspaces.map((ws) => (
+                  <option key={ws.id} value={ws.id}>
+                    {ws.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-foreground">{activeWorkspace.name}</span>
+            )}
+          </div>
+        )}
+
         {/* Backend Connectivity Status Indicator */}
         <div className="flex items-center gap-2">
           {apiStatus === "connected" && (
@@ -100,28 +136,49 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
           )}
         </div>
 
-        <button
-          aria-label="Notifications"
-          className="h-9 w-9 rounded-lg border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-        >
-          <Bell className="h-4 w-4" />
-        </button>
+        <div className="h-8 w-px bg-border mx-0.5" />
 
-        <div className="h-8 w-px bg-border mx-0.5 sm:mx-1" />
-
-        <div className="flex items-center gap-2.5 pl-1">
-          <div className="h-8 w-8 rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center justify-center font-bold text-xs">
-            FS
+        {/* User Account / Auth Actions */}
+        {user ? (
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center justify-center font-bold text-xs">
+                {user.full_name
+                  .split(" ")
+                  .map((n) => n[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase()}
+              </div>
+              <div className="text-left hidden lg:block">
+                <span className="text-xs font-semibold text-foreground block leading-tight">
+                  {user.full_name}
+                </span>
+                <span className="text-[10px] text-muted-foreground block truncate max-w-[120px]">
+                  {user.email}
+                </span>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={logout}
+              title="Sign out"
+              className="text-muted-foreground hover:text-foreground h-8 w-8 p-0"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
           </div>
-          <div className="text-left hidden md:block">
-            <span className="text-xs font-semibold text-foreground block leading-tight">
-              Founder Mode
-            </span>
-            <span className="text-[10px] text-muted-foreground block">
-              Workspace Admin
-            </span>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" asChild>
+              <Link href="/login">Sign In</Link>
+            </Button>
+            <Button size="sm" asChild>
+              <Link href="/register">Sign Up</Link>
+            </Button>
           </div>
-        </div>
+        )}
       </div>
     </header>
   );

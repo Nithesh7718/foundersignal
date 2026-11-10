@@ -61,6 +61,8 @@ pnpm-debug.log*
 lerna-debug.log*
 
 # Audio and media recordings (Evidence privacy & storage)
+/backend/storage/
+/storage/
 recordings/
 uploads/
 *.wav

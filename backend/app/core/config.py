@@ -21,8 +21,10 @@ class Settings(BaseSettings):
     PORT: int = 8000
     HOST: str = "0.0.0.0"
 
-    # Security
+    # Security & Authentication
     SECRET_KEY: str = "dev_secret_key_change_in_production_min_32_chars"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     BACKEND_CORS_ORIGINS: list[str] | str = ["http://localhost:3000"]
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
@@ -45,10 +47,14 @@ class Settings(BaseSettings):
     )
     DB_ECHO: bool = False
 
+    # Audio Storage Configuration
+    AUDIO_STORAGE_PATH: str = "storage/audio"
+    MAX_AUDIO_UPLOAD_SIZE_MB: int = 25
+
     # AI Providers
     MOCK_PROVIDERS: bool = True
     GNANI_PRISMA_API_KEY: str = ""
-    GNANI_PRISMA_ENDPOINT: str = "https://api.gnani.ai/prisma/v1/stt"
+    GNANI_PRISMA_ENDPOINT: str = "https://api.vachana.ai/stt/v3"
     TIMBRE_API_KEY: str = ""
     TIMBRE_ENDPOINT: str = "https://api.gnani.ai/timbre/v1/tts"
     LLM_PROVIDER: str = "mock"
@@ -65,6 +71,10 @@ class Settings(BaseSettings):
         if isinstance(self.BACKEND_CORS_ORIGINS, list):
             if "*" in self.BACKEND_CORS_ORIGINS:
                 raise ValueError("Wildcard origin '*' is forbidden when credentials are enabled.")
+
+        # Validate secret key length
+        if len(self.SECRET_KEY) < 32:
+            raise ValueError("SECRET_KEY must be at least 32 characters long.")
 
         # Production Safeguards
         if self.is_production:

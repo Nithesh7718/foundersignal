@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   Activity,
   CheckCircle2,
@@ -19,15 +21,14 @@ export interface NavItem {
   name: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  active?: boolean;
   badge?: string;
 }
 
 export const navItems: NavItem[] = [
-  { name: "Dashboard", href: "#", icon: LayoutDashboard, active: true },
-  { name: "Conversations & Audio", href: "#", icon: Mic },
-  { name: "Extracted Commitments", href: "#", icon: FileText },
-  { name: "Founder Approvals", href: "#", icon: ShieldCheck, badge: "0" },
+  { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "Conversations & Audio", href: "/conversations", icon: Mic },
+  { name: "Extracted Commitments", href: "/conversations", icon: FileText },
+  { name: "Founder Approvals", href: "/conversations", icon: ShieldCheck, badge: "0" },
   { name: "Evidence Graph", href: "#", icon: Network },
   { name: "Projects & Delivery", href: "#", icon: FolderKanban },
   { name: "Settings", href: "#", icon: Settings },
@@ -39,12 +40,14 @@ interface SidebarProps {
 }
 
 export function SidebarContent({ onClose }: { onClose?: () => void }) {
+  const pathname = usePathname();
+
   return (
     <div className="flex flex-col justify-between h-full">
       <div>
         {/* Brand Header */}
         <div className="h-16 flex items-center justify-between px-6 border-b">
-          <div className="flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-3">
             <div className="h-9 w-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold shadow-sm">
               <Activity className="h-5 w-5" />
             </div>
@@ -56,7 +59,7 @@ export function SidebarContent({ onClose }: { onClose?: () => void }) {
                 AI Operating Companion
               </span>
             </div>
-          </div>
+          </Link>
           {onClose && (
             <button
               onClick={onClose}
@@ -72,14 +75,19 @@ export function SidebarContent({ onClose }: { onClose?: () => void }) {
         <nav className="p-3 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
+            const isActive =
+              item.href === "/"
+                ? pathname === "/"
+                : item.href !== "#" && pathname.startsWith(item.href);
+
             return (
-              <a
+              <Link
                 key={item.name}
                 href={item.href}
                 onClick={onClose}
                 className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  item.active
-                    ? "bg-primary/10 text-primary"
+                  isActive
+                    ? "bg-primary/10 text-primary font-semibold"
                     : "text-muted-foreground hover:bg-accent hover:text-foreground"
                 }`}
               >
@@ -92,7 +100,7 @@ export function SidebarContent({ onClose }: { onClose?: () => void }) {
                     {item.badge}
                   </Badge>
                 )}
-              </a>
+              </Link>
             );
           })}
         </nav>
@@ -106,12 +114,12 @@ export function SidebarContent({ onClose }: { onClose?: () => void }) {
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
           <span className="text-xs font-semibold text-foreground">
-            Phase 1.5: Hardened Foundation
+            Phase 2A: Voice-to-Commitment
           </span>
         </div>
         <p className="text-[11px] text-muted-foreground leading-relaxed flex items-center gap-1.5">
           <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />
-          Evidence-first operating companion initialized.
+          Evidence-backed audio intake & tenant isolation ready.
         </p>
       </div>
     </div>

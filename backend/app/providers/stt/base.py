@@ -1,10 +1,14 @@
+import logging
 from abc import abstractmethod
 
+import httpx
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.core.exceptions import ExternalProviderException
 from app.providers.base import BaseProvider
+
+logger = logging.getLogger(__name__)
 
 
 class TranscriptSegment(BaseModel):
@@ -31,7 +35,7 @@ class STTProvider(BaseProvider):
     async def transcribe_audio(
         self,
         audio_bytes: bytes,
-        language: str = "en",
+        language: str = "en-IN",
     ) -> STTResult:
         """Transcribe audio bytes to structured transcript with timestamps."""
         pass
@@ -51,7 +55,7 @@ class MockGnaniPrismaSTTProvider(STTProvider):
     async def transcribe_audio(
         self,
         audio_bytes: bytes,
-        language: str = "en",
+        language: str = "en-IN",
     ) -> STTResult:
         return STTResult(
             provider=self.provider_name,
@@ -81,14 +85,17 @@ class MockGnaniPrismaSTTProvider(STTProvider):
 
 
 class GnaniPrismaSTTProvider(STTProvider):
-    """Gnani Prisma Speech-to-Text integration.
+    """Gnani Prisma Speech-to-Text official integration.
 
-    Requires valid Gnani credentials and API endpoint.
+    Endpoints and Headers:
+    - Target: POST https://api.vachana.ai/stt/v3
+    - Header: X-API-Key-ID: <key>
+    - Form payload: audio_file, model="prisma-v3.0", language_code="en-IN" (or "indic-auto")
     """
 
     def __init__(self, api_key: str, endpoint: str):
         self._api_key = api_key
-        self._endpoint = endpoint
+        self._endpoint = endpoint or "https://api.vachana.ai/stt/v3"
 
     @property
     def provider_name(self) -> str:
@@ -101,17 +108,77 @@ class GnaniPrismaSTTProvider(STTProvider):
     async def transcribe_audio(
         self,
         audio_bytes: bytes,
-        language: str = "en",
+        language: str = "en-IN",
     ) -> STTResult:
         if not self._api_key:
             raise ExternalProviderException(
                 provider=self.provider_name,
                 message="Gnani Prisma STT API key is not configured.",
             )
-        # Production implementation requires real Gnani Prisma credentials and official contract
-        raise NotImplementedError(
-            "Gnani Prisma production integration requires live API credentials."
-        )
+
+        headers = {
+            "X-API-Key-ID": self._api_key,
+        }
+        data = {
+            "model": "prisma-v3.0",
+            "language_code": language,
+        }
+        files = {
+            "audio_file": ("audio_input.wav", audio_bytes, "audio/wav"),
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    self._endpoint,
+                    headers=headers,
+                    data=data,
+                    files=files,
+                )
+
+            if response.status_code != 200:
+                logger.error(
+                    "Gnani Prisma STT API error status %s: %s",
+                    response.status_code,
+                    response.text,
+                )
+                raise ExternalProviderException(
+                    provider=self.provider_name,
+                    message=f"Gnani Prisma STT returned status {response.status_code}",
+                )
+
+            res_json = response.json()
+            if not res_json.get("success", False):
+                raise ExternalProviderException(
+                    provider=self.provider_name,
+                    message=res_json.get("message", "Gnani Prisma STT request was unsuccessful."),
+                )
+
+            transcript_text = res_json.get("transcript", "")
+            detected_lang = res_json.get("detected_language_code", language)
+
+            return STTResult(
+                provider=self.provider_name,
+                is_mock=False,
+                language=detected_lang,
+                total_duration=0.0,
+                full_transcript=transcript_text,
+                segments=[
+                    TranscriptSegment(
+                        start_time=0.0,
+                        end_time=0.0,
+                        speaker=None,
+                        text=transcript_text,
+                        confidence=1.0,
+                    )
+                ],
+            )
+        except httpx.RequestError as exc:
+            logger.error("Gnani Prisma STT connection error: %s", exc)
+            raise ExternalProviderException(
+                provider=self.provider_name,
+                message="Failed to connect to Gnani Prisma STT service.",
+            ) from exc
 
 
 def get_stt_provider() -> STTProvider:
