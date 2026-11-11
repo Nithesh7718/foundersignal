@@ -1,7 +1,7 @@
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Float, ForeignKey, String
+from sqlalchemy import BigInteger, Float, ForeignKey, ForeignKeyConstraint, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -12,6 +12,21 @@ if TYPE_CHECKING:
 
 class AudioAsset(Base, TimestampMixin):
     __tablename__ = "audio_assets"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "id",
+            "workspace_id",
+            "conversation_id",
+            name="uq_audio_assets_id_workspace_conversation",
+        ),
+        ForeignKeyConstraint(
+            ["conversation_id", "workspace_id"],
+            ["conversations.id", "conversations.workspace_id"],
+            ondelete="CASCADE",
+            name="fk_audio_assets_conversation_workspace",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True,
@@ -60,4 +75,5 @@ class AudioAsset(Base, TimestampMixin):
     conversation: Mapped["Conversation"] = relationship(
         "Conversation",
         back_populates="audio_assets",
+        foreign_keys="[AudioAsset.conversation_id]",
     )

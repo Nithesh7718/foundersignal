@@ -7,6 +7,10 @@ from app.schemas.conversation import (
 )
 from app.schemas.health import HealthResponse, ReadinessResponse
 from app.schemas.transcript import TranscriptResponse
+from app.schemas.transcription_job import (
+    TranscriptionJobCreate,
+    TranscriptionJobResponse,
+)
 from app.schemas.user import TokenResponse, UserCreate, UserLogin, UserResponse
 from app.schemas.workspace import (
     WorkspaceCreate,
@@ -30,4 +34,6 @@ __all__ = [
     "AudioAssetResponse",
     "TranscriptResponse",
     "CommitmentResponse",
+    "TranscriptionJobCreate",
+    "TranscriptionJobResponse",
 ]

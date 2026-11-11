@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     MOCK_PROVIDERS: bool = True
     GNANI_PRISMA_API_KEY: str = ""
     GNANI_PRISMA_ENDPOINT: str = "https://api.vachana.ai/stt/v3"
+    GNANI_PRISMA_BATCH_ENDPOINT: str = "https://api.vachana.ai/stt/v3/batch/jobs"
     TIMBRE_API_KEY: str = ""
     TIMBRE_ENDPOINT: str = "https://api.gnani.ai/timbre/v1/tts"
     LLM_PROVIDER: str = "mock"

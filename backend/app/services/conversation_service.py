@@ -1,10 +1,13 @@
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import BinaryIO
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.audio_utils import detect_audio_duration_from_path
+from app.core.config import settings
 from app.core.exceptions import NotFoundException
 from app.core.storage.base import StorageAdapter
 from app.models.audio_asset import AudioAsset
@@ -89,6 +92,10 @@ class ConversationService:
             file_obj=file_obj,
         )
 
+        # Compute duration if detectable from audio headers
+        full_dest_path = Path(settings.AUDIO_STORAGE_PATH) / rel_path
+        duration = detect_audio_duration_from_path(str(full_dest_path.resolve()))
+
         audio_asset = AudioAsset(
             id=asset_id,
             workspace_id=workspace_id,
@@ -97,6 +104,7 @@ class ConversationService:
             storage_path=rel_path,
             file_size_bytes=total_size,
             mime_type=mime_type,
+            duration_seconds=duration,
             checksum_sha256=sha256_hash,
             status="ready",
         )

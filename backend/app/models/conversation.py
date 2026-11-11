@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, utc_now
@@ -11,11 +11,16 @@ if TYPE_CHECKING:
     from app.models.audio_asset import AudioAsset
     from app.models.commitment import Commitment
     from app.models.transcript import Transcript
+    from app.models.transcription_job import TranscriptionJob
     from app.models.workspace import Workspace
 
 
 class Conversation(Base, TimestampMixin):
     __tablename__ = "conversations"
+
+    __table_args__ = (
+        UniqueConstraint("id", "workspace_id", name="uq_conversations_id_workspace_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True,
@@ -55,14 +60,22 @@ class Conversation(Base, TimestampMixin):
         "AudioAsset",
         back_populates="conversation",
         cascade="all, delete-orphan",
+        foreign_keys="[AudioAsset.conversation_id]",
     )
     transcripts: Mapped[list["Transcript"]] = relationship(
         "Transcript",
         back_populates="conversation",
         cascade="all, delete-orphan",
+        foreign_keys="[Transcript.conversation_id]",
     )
     commitments: Mapped[list["Commitment"]] = relationship(
         "Commitment",
         back_populates="conversation",
         cascade="all, delete-orphan",
+    )
+    transcription_jobs: Mapped[list["TranscriptionJob"]] = relationship(
+        "TranscriptionJob",
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        foreign_keys="[TranscriptionJob.conversation_id]",
     )

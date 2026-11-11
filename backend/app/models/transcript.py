@@ -1,7 +1,15 @@
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, Float, ForeignKey, String, Text
+from sqlalchemy import (
+    JSON,
+    Float,
+    ForeignKey,
+    ForeignKeyConstraint,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -12,6 +20,21 @@ if TYPE_CHECKING:
 
 class Transcript(Base, TimestampMixin):
     __tablename__ = "transcripts"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "id",
+            "workspace_id",
+            "conversation_id",
+            name="uq_transcripts_id_workspace_conversation",
+        ),
+        ForeignKeyConstraint(
+            ["conversation_id", "workspace_id"],
+            ["conversations.id", "conversations.workspace_id"],
+            ondelete="CASCADE",
+            name="fk_transcripts_conversation_workspace",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True,
@@ -65,4 +88,5 @@ class Transcript(Base, TimestampMixin):
     conversation: Mapped["Conversation"] = relationship(
         "Conversation",
         back_populates="transcripts",
+        foreign_keys="[Transcript.conversation_id]",
     )
