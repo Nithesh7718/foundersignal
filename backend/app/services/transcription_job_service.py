@@ -1,8 +1,9 @@
 import re
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -12,14 +13,17 @@ from app.models.conversation import Conversation
 from app.models.transcript import Transcript
 from app.models.transcription_job import TranscriptionJob
 
+if TYPE_CHECKING:
+    from app.providers.stt.base import STTResult
+
 # Valid lifecycle state transitions
 VALID_TRANSITIONS: dict[str, set[str]] = {
     "queued": {"submitting", "failed", "cancelled"},
     "submitting": {"submitted", "submission_unknown", "completed", "failed"},
     "submission_unknown": {"submitted", "cancelled_unconfirmed", "failed"},
     "cancelled_unconfirmed": {"submitted", "failed", "cancelled", "cancelled_unconfirmed"},
-    "submitted": {"processing", "failed", "cancelled", "cancelled_unconfirmed"},
-    "processing": {"completed", "failed", "cancelled", "cancelled_unconfirmed"},
+    "submitted": {"processing", "completed", "failed", "cancelled", "cancelled_unconfirmed"},
+    "processing": {"processing", "completed", "failed", "cancelled", "cancelled_unconfirmed"},
     "completed": set(),  # Terminal state
     "failed": set(),  # Terminal state
     "cancelled": set(),  # Terminal state
@@ -192,6 +196,35 @@ class TranscriptionJobService:
         )
 
     @staticmethod
+    def verify_lease_ownership(
+        job: TranscriptionJob,
+        expected_worker_id: str | None = None,
+        expected_lease_token: uuid.UUID | None = None,
+        now: datetime | None = None,
+    ) -> None:
+        """Verify that a worker holds an active, unexpired lease with matching fencing token."""
+        check_now = now or datetime.now(UTC)
+
+        if expected_worker_id is not None:
+            if job.locked_by != expected_worker_id:
+                raise ConflictException(
+                    f"Worker '{expected_worker_id}' does not own active lease on job '{job.id}' "
+                    f"(currently locked by '{job.locked_by}')."
+                )
+            if job.lease_expires_at is not None and job.lease_expires_at < check_now:
+                raise ConflictException(
+                    f"Worker '{expected_worker_id}' lease on job '{job.id}' expired at "
+                    f"{job.lease_expires_at.isoformat()}."
+                )
+
+        if expected_lease_token is not None:
+            if job.lease_token is None or job.lease_token != expected_lease_token:
+                raise ConflictException(
+                    f"Stale or mismatched lease token for job '{job.id}'. "
+                    f"Expected '{expected_lease_token}', found '{job.lease_token}'."
+                )
+
+    @staticmethod
     def transition_status(
         db: Session,
         workspace_id: uuid.UUID,
@@ -204,9 +237,35 @@ class TranscriptionJobService:
         error_code: str | None = None,
         error_message: str | None = None,
         next_poll_seconds: int | None = None,
+        expected_worker_id: str | None = None,
+        expected_lease_token: uuid.UUID | None = None,
     ) -> TranscriptionJob:
         """Validate and apply a state transition with lifecycle timestamps and safety invariants."""
-        job = TranscriptionJobService.get_job(db, workspace_id, job_id)
+        # Query with row-level lock for atomic verification and state mutation
+        job = db.execute(
+            select(TranscriptionJob)
+            .where(
+                TranscriptionJob.id == job_id,
+                TranscriptionJob.workspace_id == workspace_id,
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).scalar_one_or_none()
+
+        if not job:
+            raise NotFoundException("TranscriptionJob", job_id)
+
+        now = datetime.now(UTC)
+
+        # Enforce lease fencing if worker credentials provided
+        if expected_worker_id is not None or expected_lease_token is not None:
+            TranscriptionJobService.verify_lease_ownership(
+                job=job,
+                expected_worker_id=expected_worker_id,
+                expected_lease_token=expected_lease_token,
+                now=now,
+            )
+
         current_status = job.status
 
         # Enforce state transition rules
@@ -216,10 +275,9 @@ class TranscriptionJobService:
                 f"Invalid job state transition from '{current_status}' to '{target_status}'."
             )
 
-        now = datetime.now(UTC)
-
         if target_status == "submitting":
             job.attempt_count += 1
+            job.last_attempt_at = now
             if not job.started_at:
                 job.started_at = now
 
@@ -228,11 +286,19 @@ class TranscriptionJobService:
                 job.external_job_id = external_job_id
             if next_poll_seconds:
                 job.next_poll_at = now + timedelta(seconds=next_poll_seconds)
+            job.locked_by = None
+            job.locked_at = None
+            job.lease_expires_at = None
+            job.lease_token = None
 
         elif target_status == "submission_unknown":
             job.error_code = error_code or "SUBMISSION_UNKNOWN"
             job.error_message = sanitize_error_message(error_message)
             job.next_poll_at = None
+            job.locked_by = None
+            job.locked_at = None
+            job.lease_expires_at = None
+            job.lease_token = None
 
         elif target_status == "cancelled_unconfirmed":
             job.error_code = error_code or "CANCELLED_UNCONFIRMED"
@@ -241,13 +307,22 @@ class TranscriptionJobService:
                 or "Local cancellation requested; remote submission remains unconfirmed."
             )
             job.next_poll_at = None
+            job.locked_by = None
+            job.locked_at = None
+            job.lease_expires_at = None
+            job.lease_token = None
 
         elif target_status == "processing":
             if progress_percent is not None:
                 job.progress_percent = progress_percent
             job.last_polled_at = now
+            job.last_attempt_at = now
             if next_poll_seconds:
                 job.next_poll_at = now + timedelta(seconds=next_poll_seconds)
+            job.locked_by = None
+            job.locked_at = None
+            job.lease_expires_at = None
+            job.lease_token = None
 
         elif target_status == "completed":
             # Invariant: Job cannot be marked completed without an existing persisted Transcript
@@ -276,16 +351,28 @@ class TranscriptionJobService:
             job.progress_percent = 100
             job.completed_at = now
             job.next_poll_at = None
+            job.locked_by = None
+            job.locked_at = None
+            job.lease_expires_at = None
+            job.lease_token = None
 
         elif target_status == "failed":
             job.error_code = error_code or "TRANSCRIPTION_FAILED"
             job.error_message = sanitize_error_message(error_message)
             job.completed_at = now
             job.next_poll_at = None
+            job.locked_by = None
+            job.locked_at = None
+            job.lease_expires_at = None
+            job.lease_token = None
 
         elif target_status == "cancelled":
             job.completed_at = now
             job.next_poll_at = None
+            job.locked_by = None
+            job.locked_at = None
+            job.lease_expires_at = None
+            job.lease_token = None
 
         job.status = target_status
         db.commit()
@@ -299,6 +386,8 @@ class TranscriptionJobService:
         job_id: uuid.UUID,
         external_job_id: str,
         next_poll_seconds: int = 10,
+        expected_worker_id: str | None = None,
+        expected_lease_token: uuid.UUID | None = None,
     ) -> TranscriptionJob:
         return TranscriptionJobService.transition_status(
             db=db,
@@ -307,6 +396,8 @@ class TranscriptionJobService:
             target_status="submitted",
             external_job_id=external_job_id,
             next_poll_seconds=next_poll_seconds,
+            expected_worker_id=expected_worker_id,
+            expected_lease_token=expected_lease_token,
         )
 
     @staticmethod
@@ -315,6 +406,8 @@ class TranscriptionJobService:
         workspace_id: uuid.UUID,
         job_id: uuid.UUID,
         transcript_id: uuid.UUID,
+        expected_worker_id: str | None = None,
+        expected_lease_token: uuid.UUID | None = None,
     ) -> TranscriptionJob:
         return TranscriptionJobService.transition_status(
             db=db,
@@ -322,6 +415,8 @@ class TranscriptionJobService:
             job_id=job_id,
             target_status="completed",
             transcript_id=transcript_id,
+            expected_worker_id=expected_worker_id,
+            expected_lease_token=expected_lease_token,
         )
 
     @staticmethod
@@ -331,6 +426,8 @@ class TranscriptionJobService:
         job_id: uuid.UUID,
         error_code: str,
         error_message: str,
+        expected_worker_id: str | None = None,
+        expected_lease_token: uuid.UUID | None = None,
     ) -> TranscriptionJob:
         return TranscriptionJobService.transition_status(
             db=db,
@@ -339,6 +436,8 @@ class TranscriptionJobService:
             target_status="failed",
             error_code=error_code,
             error_message=error_message,
+            expected_worker_id=expected_worker_id,
+            expected_lease_token=expected_lease_token,
         )
 
     @staticmethod
@@ -403,6 +502,8 @@ class TranscriptionJobService:
         workspace_id: uuid.UUID,
         job_id: uuid.UUID,
         error_message: str = "Cancellation request timed out. Remote job status unconfirmed.",
+        expected_worker_id: str | None = None,
+        expected_lease_token: uuid.UUID | None = None,
     ) -> TranscriptionJob:
         """Record cancellation timeout while preserving the active-job asset lock."""
         return TranscriptionJobService.transition_status(
@@ -412,6 +513,8 @@ class TranscriptionJobService:
             target_status="cancelled_unconfirmed",
             error_code="CANCELLATION_TIMEOUT",
             error_message=error_message,
+            expected_worker_id=expected_worker_id,
+            expected_lease_token=expected_lease_token,
         )
 
     @staticmethod
@@ -419,6 +522,8 @@ class TranscriptionJobService:
         db: Session,
         workspace_id: uuid.UUID,
         job_id: uuid.UUID,
+        expected_worker_id: str | None = None,
+        expected_lease_token: uuid.UUID | None = None,
     ) -> TranscriptionJob:
         """Confirm remote cancellation was verified and release audio asset lock."""
         return TranscriptionJobService.transition_status(
@@ -426,6 +531,8 @@ class TranscriptionJobService:
             workspace_id=workspace_id,
             job_id=job_id,
             target_status="cancelled",
+            expected_worker_id=expected_worker_id,
+            expected_lease_token=expected_lease_token,
         )
 
     @staticmethod
@@ -435,6 +542,8 @@ class TranscriptionJobService:
         job_id: uuid.UUID,
         error_code: str = "SUBMISSION_UNKNOWN",
         error_message: str = "Network timeout waiting for provider response. Receipt unknown.",
+        expected_worker_id: str | None = None,
+        expected_lease_token: uuid.UUID | None = None,
     ) -> TranscriptionJob:
         """Mark job in ambiguous submission state due to network drop or timeout."""
         return TranscriptionJobService.transition_status(
@@ -444,6 +553,8 @@ class TranscriptionJobService:
             target_status="submission_unknown",
             error_code=error_code,
             error_message=error_message,
+            expected_worker_id=expected_worker_id,
+            expected_lease_token=expected_lease_token,
         )
 
     @staticmethod
@@ -521,3 +632,347 @@ class TranscriptionJobService:
                 "Must be 'attach_external_id', 'confirm_absent' ('mark_failed'), 'cancel', "
                 "or 'confirm_cancelled'."
             )
+
+    @staticmethod
+    def claim_queued_jobs(
+        db: Session,
+        worker_id: str,
+        limit: int = 5,
+        lease_duration_seconds: int = 60,
+    ) -> list[TranscriptionJob]:
+        """Atomically claim eligible queued transcription jobs using FOR UPDATE SKIP LOCKED.
+
+        Ensures concurrent workers cannot claim the same job.
+        Generates a unique fencing lease_token per claim.
+        """
+        now = datetime.now(UTC)
+        lease_expires = now + timedelta(seconds=lease_duration_seconds)
+
+        stmt = (
+            select(TranscriptionJob)
+            .where(
+                TranscriptionJob.status == "queued",
+                or_(
+                    TranscriptionJob.locked_by.is_(None),
+                    TranscriptionJob.lease_expires_at < now,
+                ),
+            )
+            .order_by(TranscriptionJob.created_at.asc())
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+
+        jobs = list(db.execute(stmt).scalars().all())
+        for job in jobs:
+            job.locked_by = worker_id
+            job.locked_at = now
+            job.lease_expires_at = lease_expires
+            job.lease_token = uuid.uuid4()
+        if jobs:
+            db.commit()
+            for job in jobs:
+                db.refresh(job)
+        return jobs
+
+    @staticmethod
+    def claim_polling_jobs(
+        db: Session,
+        worker_id: str,
+        limit: int = 5,
+        lease_duration_seconds: int = 60,
+    ) -> list[TranscriptionJob]:
+        """Atomically claim eligible submitted/processing jobs due for status polling.
+
+        Uses FOR UPDATE SKIP LOCKED to prevent redundant polling requests.
+        Generates a unique fencing lease_token per claim.
+        """
+        now = datetime.now(UTC)
+        lease_expires = now + timedelta(seconds=lease_duration_seconds)
+
+        stmt = (
+            select(TranscriptionJob)
+            .where(
+                TranscriptionJob.status.in_(["submitted", "processing"]),
+                or_(
+                    TranscriptionJob.next_poll_at.is_(None),
+                    TranscriptionJob.next_poll_at <= now,
+                ),
+                or_(
+                    TranscriptionJob.locked_by.is_(None),
+                    TranscriptionJob.lease_expires_at < now,
+                ),
+            )
+            .order_by(TranscriptionJob.next_poll_at.asc().nullsfirst())
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+
+        jobs = list(db.execute(stmt).scalars().all())
+        for job in jobs:
+            job.locked_by = worker_id
+            job.locked_at = now
+            job.lease_expires_at = lease_expires
+            job.lease_token = uuid.uuid4()
+        if jobs:
+            db.commit()
+            for job in jobs:
+                db.refresh(job)
+        return jobs
+
+    @staticmethod
+    def release_lease(
+        db: Session,
+        job_id: uuid.UUID,
+        worker_id: str | None = None,
+        lease_token: uuid.UUID | None = None,
+    ) -> None:
+        """Release worker lease on a transcription job."""
+        job = db.execute(
+            select(TranscriptionJob)
+            .where(TranscriptionJob.id == job_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).scalar_one_or_none()
+        if not job:
+            return
+        if worker_id and job.locked_by != worker_id:
+            return
+        if lease_token and job.lease_token != lease_token:
+            return
+        job.locked_by = None
+        job.locked_at = None
+        job.lease_expires_at = None
+        job.lease_token = None
+        db.commit()
+
+    @staticmethod
+    def recover_expired_leases(
+        db: Session,
+        recovery_worker_id: str = "recovery",
+    ) -> dict[str, int]:
+        """Inspect and recover jobs with expired worker leases.
+
+        Rules:
+        - If 'submitting': worker crashed during remote API submission.
+          Remote receipt is unknown. Must transition to 'submission_unknown'
+          with error_code 'WORKER_CRASH_DURING_SUBMISSION' to retain the audio asset lock.
+          Never blindly resubmit!
+        - If 'submitted' or 'processing': external job ID is safely persisted in DB.
+          Clear lease and reset next_poll_at to now() so another worker can resume polling.
+        - If 'queued': clear lease so it can be re-claimed.
+        - Terminal states: clear lease.
+        """
+        now = datetime.now(UTC)
+        stmt = (
+            select(TranscriptionJob)
+            .where(
+                TranscriptionJob.lease_expires_at.is_not(None),
+                TranscriptionJob.lease_expires_at < now,
+                TranscriptionJob.locked_by.is_not(None),
+            )
+            .with_for_update(skip_locked=True)
+            .execution_options(populate_existing=True)
+        )
+
+        expired_jobs = list(db.execute(stmt).scalars().all())
+        stats = {
+            "submitting_to_unknown": 0,
+            "polling_reset": 0,
+            "queued_reset": 0,
+            "cleared": 0,
+        }
+
+        for job in expired_jobs:
+            if job.status == "submitting":
+                job.status = "submission_unknown"
+                job.error_code = "WORKER_CRASH_DURING_SUBMISSION"
+                job.error_message = (
+                    "Worker lease expired during provider submission. "
+                    "Provider receipt unknown; manual reconciliation required."
+                )
+                job.locked_by = None
+                job.locked_at = None
+                job.lease_expires_at = None
+                job.lease_token = None
+                job.next_poll_at = None
+                stats["submitting_to_unknown"] += 1
+
+            elif job.status in ("submitted", "processing"):
+                job.locked_by = None
+                job.locked_at = None
+                job.lease_expires_at = None
+                job.lease_token = None
+                job.next_poll_at = now
+                stats["polling_reset"] += 1
+
+            elif job.status == "queued":
+                job.locked_by = None
+                job.locked_at = None
+                job.lease_expires_at = None
+                job.lease_token = None
+                stats["queued_reset"] += 1
+
+            else:
+                job.locked_by = None
+                job.locked_at = None
+                job.lease_expires_at = None
+                job.lease_token = None
+                stats["cleared"] += 1
+
+        if expired_jobs:
+            db.commit()
+
+        return stats
+
+    @staticmethod
+    def schedule_poll_retry(
+        db: Session,
+        workspace_id: uuid.UUID,
+        job_id: uuid.UUID,
+        next_poll_seconds: int,
+        expected_worker_id: str | None = None,
+        expected_lease_token: uuid.UUID | None = None,
+    ) -> TranscriptionJob:
+        """Atomically schedule exponential backoff retry for a polling job under lease fencing."""
+        job = db.execute(
+            select(TranscriptionJob)
+            .where(
+                TranscriptionJob.id == job_id,
+                TranscriptionJob.workspace_id == workspace_id,
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).scalar_one_or_none()
+
+        if not job:
+            raise NotFoundException("TranscriptionJob", job_id)
+
+        now = datetime.now(UTC)
+        if expected_worker_id is not None or expected_lease_token is not None:
+            TranscriptionJobService.verify_lease_ownership(
+                job=job,
+                expected_worker_id=expected_worker_id,
+                expected_lease_token=expected_lease_token,
+                now=now,
+            )
+
+        job.attempt_count += 1
+        job.last_attempt_at = now
+        job.last_polled_at = now
+        job.next_poll_at = now + timedelta(seconds=next_poll_seconds)
+        job.locked_by = None
+        job.locked_at = None
+        job.lease_expires_at = None
+        job.lease_token = None
+        db.commit()
+        db.refresh(job)
+        return job
+
+    @staticmethod
+    def list_unresolved_jobs(
+        db: Session,
+        workspace_id: uuid.UUID,
+    ) -> list[TranscriptionJob]:
+        """List all jobs in submission_unknown or cancelled_unconfirmed for a workspace."""
+        stmt = (
+            select(TranscriptionJob)
+            .where(
+                TranscriptionJob.workspace_id == workspace_id,
+                TranscriptionJob.status.in_(["submission_unknown", "cancelled_unconfirmed"]),
+            )
+            .order_by(TranscriptionJob.created_at.desc())
+        )
+        return list(db.execute(stmt).scalars().all())
+
+    @staticmethod
+    def save_transcript_idempotent(
+        db: Session,
+        job: TranscriptionJob,
+        stt_result: "STTResult",
+        expected_worker_id: str | None = None,
+        expected_lease_token: uuid.UUID | None = None,
+    ) -> Transcript:
+        """Persist a Transcript record idempotently.
+
+        If a transcript already exists for this job or (conversation_id, audio_asset_id),
+        it reuses the existing transcript and associates it to the job.
+        Never invents confidence scores; computes average confidence only from returned scores.
+        Verifies worker lease ownership under row lock before attaching transcript to job.
+        """
+        # Atomically fetch and lock the latest job row from the database
+        job_locked = db.execute(
+            select(TranscriptionJob)
+            .where(
+                TranscriptionJob.id == job.id,
+                TranscriptionJob.workspace_id == job.workspace_id,
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).scalar_one_or_none()
+
+        if not job_locked:
+            raise NotFoundException("TranscriptionJob", job.id)
+
+        # 1. Enforce lease fencing if worker credentials provided
+        if expected_worker_id is not None or expected_lease_token is not None:
+            TranscriptionJobService.verify_lease_ownership(
+                job=job_locked,
+                expected_worker_id=expected_worker_id,
+                expected_lease_token=expected_lease_token,
+            )
+
+        # 2. Check if job already has transcript_id set
+        if job_locked.transcript_id:
+            existing = db.get(Transcript, job_locked.transcript_id)
+            if existing:
+                return existing
+
+        # 3. Check if a transcript already exists for this conversation and audio asset
+        existing_transcript = db.execute(
+            select(Transcript).where(
+                Transcript.workspace_id == job_locked.workspace_id,
+                Transcript.conversation_id == job_locked.conversation_id,
+                Transcript.audio_asset_id == job_locked.audio_asset_id,
+            )
+        ).scalar_one_or_none()
+
+        if existing_transcript:
+            job_locked.transcript_id = existing_transcript.id
+            db.commit()
+            db.refresh(job_locked)
+            job.transcript_id = job_locked.transcript_id
+            return existing_transcript
+
+        # 4. Calculate confidence only if returned by provider
+        confidences = [s.confidence for s in stt_result.segments if s.confidence is not None]
+        overall_confidence: float | None = None
+        if confidences:
+            overall_confidence = float(sum(confidences) / len(confidences))
+
+        segments_data = [s.model_dump() for s in stt_result.segments]
+
+        transcript = Transcript(
+            workspace_id=job_locked.workspace_id,
+            conversation_id=job_locked.conversation_id,
+            audio_asset_id=job_locked.audio_asset_id,
+            provider=job_locked.provider,
+            model=stt_result.model or job_locked.model,
+            language_code=stt_result.language or job_locked.language_code,
+            raw_transcript=stt_result.full_transcript,
+            confidence=overall_confidence,
+            status="completed",
+            metadata_payload={
+                "total_duration": stt_result.total_duration,
+                "segments": segments_data,
+                "raw_response": stt_result.raw_response,
+            },
+        )
+        db.add(transcript)
+        db.flush()
+
+        job_locked.transcript_id = transcript.id
+        db.commit()
+        db.refresh(transcript)
+        db.refresh(job_locked)
+        job.transcript_id = job_locked.transcript_id
+        return transcript

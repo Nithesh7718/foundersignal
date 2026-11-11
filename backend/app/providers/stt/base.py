@@ -441,6 +441,10 @@ class GnaniPrismaSTTProvider(STTProvider):
         detected_lang = res_json.get("detected_language_code", language)
         model_name = res_json.get("model", "prisma-v3.0")
 
+        # Extract genuine confidence score if supplied by provider; default to None when absent
+        conf_raw = res_json.get("confidence")
+        segment_confidence: float | None = float(conf_raw) if conf_raw is not None else None
+
         return STTResult(
             provider=self.provider_name,
             is_mock=False,
@@ -454,7 +458,7 @@ class GnaniPrismaSTTProvider(STTProvider):
                     end_time=0.0,
                     speaker=None,
                     text=transcript_text,
-                    confidence=1.0,
+                    confidence=segment_confidence,
                     language_detected=detected_lang,
                 )
             ],

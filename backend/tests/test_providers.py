@@ -1,3 +1,4 @@
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -462,3 +463,130 @@ async def test_gnani_prisma_batch_rejects_files_above_10mb() -> None:
             audio_bytes=oversized_bytes,
             filename="large_recording.wav",
         )
+
+
+@pytest.mark.asyncio
+async def test_gnani_prisma_rest_stt_confidence_none_when_omitted() -> None:
+    """FS-03: Verify REST STT sets confidence=None when provider omits confidence score."""
+    provider = GnaniPrismaSTTProvider(
+        api_key="test_key",
+        rest_endpoint="https://api.vachana.ai/stt/v3",
+        batch_endpoint="https://api.vachana.ai/stt/v3/batch/jobs",
+    )
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "success": True,
+        "transcript": "No confidence provided by API",
+        "detected_language_code": "en-IN",
+        "model": "prisma-v3.0",
+    }
+
+    with patch.object(httpx.AsyncClient, "request", new_callable=AsyncMock) as mock_request:
+        mock_request.return_value = mock_resp
+        res = await provider.transcribe_sync(b"audio_bytes", "audio.wav", "en-IN")
+        assert len(res.segments) == 1
+        assert res.segments[0].confidence is None
+        assert res.segments[0].text == "No confidence provided by API"
+
+
+@pytest.mark.asyncio
+async def test_gnani_prisma_rest_stt_confidence_preserved_when_supplied() -> None:
+    """FS-03: Verify REST STT preserves genuine provider confidence score when returned."""
+    provider = GnaniPrismaSTTProvider(
+        api_key="test_key",
+        rest_endpoint="https://api.vachana.ai/stt/v3",
+        batch_endpoint="https://api.vachana.ai/stt/v3/batch/jobs",
+    )
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "success": True,
+        "transcript": "Genuine confidence score provided",
+        "detected_language_code": "en-IN",
+        "model": "prisma-v3.0",
+        "confidence": 0.88,
+    }
+
+    with patch.object(httpx.AsyncClient, "request", new_callable=AsyncMock) as mock_request:
+        mock_request.return_value = mock_resp
+        res = await provider.transcribe_sync(b"audio_bytes", "audio.wav", "en-IN")
+        assert len(res.segments) == 1
+        assert res.segments[0].confidence == 0.88
+
+
+@pytest.mark.asyncio
+async def test_transcript_persistence_preserves_none_confidence_for_rest_stt() -> None:
+    """FS-03: Verify transcript persistence does not convert missing confidence into 1.0."""
+    from app.core.database import SessionLocal
+    from app.models.audio_asset import AudioAsset
+    from app.models.conversation import Conversation
+    from app.models.transcription_job import TranscriptionJob
+    from app.models.user import User
+    from app.models.workspace import Workspace, WorkspaceMembership
+    from app.services.transcription_job_service import TranscriptionJobService
+
+    with SessionLocal() as db:
+        user = User(
+            email=f"conf_test_{uuid.uuid4()}@example.com",
+            hashed_password="pw",
+            full_name="Conf Tester",
+            is_active=True,
+        )
+        db.add(user)
+        db.flush()
+
+        ws = Workspace(name="Conf WS", slug=f"conf-{uuid.uuid4()}", owner_id=user.id)
+        db.add(ws)
+        db.flush()
+        db.add(WorkspaceMembership(workspace_id=ws.id, user_id=user.id, role="owner"))
+        conv = Conversation(workspace_id=ws.id, title="Conf Conv", conversation_type="meeting")
+        db.add(conv)
+        db.flush()
+        asset = AudioAsset(
+            workspace_id=ws.id,
+            conversation_id=conv.id,
+            file_name="test.wav",
+            storage_path="path/to/test.wav",
+            file_size_bytes=100,
+            mime_type="audio/wav",
+            duration_seconds=10.0,
+            status="ready",
+        )
+        db.add(asset)
+        db.flush()
+
+        job = TranscriptionJob(
+            workspace_id=ws.id,
+            conversation_id=conv.id,
+            audio_asset_id=asset.id,
+            job_type="rest",
+            status="queued",
+        )
+        db.add(job)
+        db.commit()
+
+        stt_result = STTResult(
+            provider="gnani_prisma",
+            is_mock=False,
+            language="en-IN",
+            total_duration=10.0,
+            full_transcript="Speech with no confidence provided.",
+            segments=[
+                TranscriptSegment(
+                    start_time=0.0,
+                    end_time=10.0,
+                    speaker=None,
+                    text="Speech with no confidence provided.",
+                    confidence=None,  # Missing confidence from provider
+                )
+            ],
+        )
+
+        transcript = TranscriptionJobService.save_transcript_idempotent(
+            db=db,
+            job=job,
+            stt_result=stt_result,
+        )
+        assert transcript.confidence is None
+        assert transcript.confidence != 1.0

@@ -119,6 +119,26 @@ class TranscriptionJob(Base, TimestampMixin):
         index=True,
         nullable=True,
     )
+    locked_by: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+    locked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        index=True,
+        nullable=True,
+    )
+    last_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    lease_token: Mapped[uuid.UUID | None] = mapped_column(
+        nullable=True,
+    )
 
     # Relationships
     workspace: Mapped["Workspace"] = relationship("Workspace")
@@ -180,5 +200,11 @@ class TranscriptionJob(Base, TimestampMixin):
             "ix_transcription_jobs_status_next_poll",
             "status",
             "next_poll_at",
+        ),
+        # Compound index for worker lease recovery
+        Index(
+            "ix_transcription_jobs_status_lease",
+            "status",
+            "lease_expires_at",
         ),
     )

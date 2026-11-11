@@ -58,9 +58,19 @@ class Settings(BaseSettings):
     GNANI_PRISMA_BATCH_ENDPOINT: str = "https://api.vachana.ai/stt/v3/batch/jobs"
     TIMBRE_API_KEY: str = ""
     TIMBRE_ENDPOINT: str = "https://api.gnani.ai/timbre/v1/tts"
+    # LLM Extraction Provider
     LLM_PROVIDER: str = "mock"
     LLM_API_KEY: str = ""
     LLM_MODEL: str = "gpt-4o-mini"
+
+    # Background Worker Configuration
+    WORKER_ENABLED: bool = True
+    WORKER_POLL_INTERVAL_SECONDS: float = 2.0
+    BATCH_STATUS_POLL_INTERVAL_SECONDS: int = 10
+    WORKER_LEASE_DURATION_SECONDS: int = 60
+    WORKER_BATCH_SIZE: int = 5
+    MAX_JOB_RETRIES: int = 3
+    MAX_BACKOFF_SECONDS: int = 300
 
     @property
     def is_production(self) -> bool:
