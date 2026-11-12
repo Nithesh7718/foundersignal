@@ -117,8 +117,8 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
           {apiStatus === "connected" && (
             <Badge variant="success" className="gap-1.5 py-1 px-2.5">
               <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-              <span className="hidden xs:inline">API Connected</span>
-              <span className="xs:hidden">Online</span>
+              <span className="hidden sm:inline">API Connected</span>
+              <span className="sm:hidden">Online</span>
             </Badge>
           )}
           {apiStatus === "checking" && (
@@ -130,8 +130,8 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
           {apiStatus === "disconnected" && (
             <Badge variant="warning" className="gap-1.5 py-1 px-2.5">
               <AlertCircle className="h-3 w-3 text-amber-600" />
-              <span className="hidden xs:inline">API Standby</span>
-              <span className="xs:hidden">Offline</span>
+              <span className="hidden sm:inline">API Standby</span>
+              <span className="sm:hidden">Offline</span>
             </Badge>
           )}
         </div>

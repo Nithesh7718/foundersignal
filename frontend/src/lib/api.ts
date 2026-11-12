@@ -34,13 +34,16 @@ export interface Commitment {
   title: string;
   description?: string;
   status: string;
-  confidence_score: number;
+  confidence_score?: number | null;
   source_quote: string;
   speaker?: string;
   timestamp_start?: number;
   timestamp_end?: number;
   assignee_id?: string;
   due_date?: string;
+  evidence_hash?: string | null;
+  reviewed_by_id?: string | null;
+  reviewed_at?: string | null;
   created_at: string;
 }
 
@@ -75,11 +78,54 @@ export interface ConversationDetail extends Conversation {
   commitments: Commitment[];
 }
 
+export interface TranscriptionJob {
+  id: string;
+  workspace_id: string;
+  conversation_id: string;
+  audio_asset_id: string;
+  transcript_id?: string | null;
+  provider: string;
+  model: string;
+  job_type: string;
+  external_job_id?: string | null;
+  status: string;
+  language_code: string;
+  attempt_count: number;
+  progress_percent: number;
+  error_code?: string | null;
+  error_message?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CommitmentCreateInput {
+  title: string;
+  description?: string;
+  source_quote: string;
+  status?: string;
+  confidence_score?: number;
+  speaker?: string;
+  timestamp_start?: number;
+  timestamp_end?: number;
+  due_date?: string;
+}
+
+export interface CommitmentUpdateInput {
+  title?: string;
+  description?: string;
+  status?: string;
+  due_date?: string;
+  assignee_id?: string;
+}
+
 export interface AuthResponse {
   access_token: string;
   token_type: string;
   user: User;
 }
+
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/v1\/?$/, "") ||
@@ -141,10 +187,25 @@ async function request<T>(
     let errorMessage = `Request failed with status ${response.status}`;
     try {
       const errJson = await response.json();
-      if (errJson.error?.message) {
+      if (
+        errJson.error?.details?.validation_errors &&
+        Array.isArray(errJson.error.details.validation_errors) &&
+        errJson.error.details.validation_errors.length > 0
+      ) {
+        const msgs = errJson.error.details.validation_errors.map(
+          (v: { field?: string; message?: string }) => {
+            const fieldName = v.field ? v.field.replace(/^body\./, "") : "";
+            return fieldName ? `${fieldName}: ${v.message}` : v.message || "Invalid input";
+          }
+        );
+        errorMessage = msgs.join("; ");
+      } else if (errJson.error?.message) {
         errorMessage = errJson.error.message;
       } else if (errJson.detail) {
-        errorMessage = typeof errJson.detail === "string" ? errJson.detail : JSON.stringify(errJson.detail);
+        errorMessage =
+          typeof errJson.detail === "string"
+            ? errJson.detail
+            : JSON.stringify(errJson.detail);
       }
     } catch {
       // Non-JSON response, fallback to status text
@@ -247,6 +308,137 @@ export const api = {
       {
         method: "POST",
         body: formData,
+      }
+    );
+  },
+
+  async deleteConversation(
+    workspaceId: string,
+    conversationId: string
+  ): Promise<void> {
+    return request<void>(
+      `/workspaces/${workspaceId}/conversations/${conversationId}`,
+      {
+        method: "DELETE",
+      }
+    );
+  },
+
+  async getAudioBlob(
+    workspaceId: string,
+    conversationId: string,
+    audioAssetId: string
+  ): Promise<Blob> {
+    const token = getStoredToken();
+    const headers: HeadersInit = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/audio/${audioAssetId}`,
+      { headers }
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to load audio: HTTP ${response.status}`);
+    }
+    return response.blob();
+  },
+
+  // Transcription Jobs
+  async createTranscriptionJob(
+    workspaceId: string,
+    conversationId: string,
+    audioAssetId: string,
+    languageCode = "indic-auto"
+  ): Promise<TranscriptionJob> {
+    return request<TranscriptionJob>(
+      `/workspaces/${workspaceId}/conversations/${conversationId}/transcribe`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          audio_asset_id: audioAssetId,
+          language_code: languageCode,
+        }),
+      }
+    );
+  },
+
+  async listConversationTranscriptionJobs(
+    workspaceId: string,
+    conversationId: string
+  ): Promise<TranscriptionJob[]> {
+    return request<TranscriptionJob[]>(
+      `/workspaces/${workspaceId}/conversations/${conversationId}/transcription-jobs`
+    );
+  },
+
+  async getTranscriptionJob(
+    workspaceId: string,
+    jobId: string
+  ): Promise<TranscriptionJob> {
+    return request<TranscriptionJob>(
+      `/workspaces/${workspaceId}/transcription-jobs/${jobId}`
+    );
+  },
+
+  // Commitments
+  async listCommitments(
+    workspaceId: string,
+    conversationId: string
+  ): Promise<Commitment[]> {
+    return request<Commitment[]>(
+      `/workspaces/${workspaceId}/conversations/${conversationId}/commitments`
+    );
+  },
+
+  async createCommitment(
+    workspaceId: string,
+    conversationId: string,
+    data: CommitmentCreateInput
+  ): Promise<Commitment> {
+    return request<Commitment>(
+      `/workspaces/${workspaceId}/conversations/${conversationId}/commitments`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    );
+  },
+
+  async extractCommitments(
+    workspaceId: string,
+    conversationId: string
+  ): Promise<Commitment[]> {
+    return request<Commitment[]>(
+      `/workspaces/${workspaceId}/conversations/${conversationId}/commitments/extract`,
+      {
+        method: "POST",
+      }
+    );
+  },
+
+  async updateCommitment(
+    workspaceId: string,
+    commitmentId: string,
+    data: CommitmentUpdateInput
+  ): Promise<Commitment> {
+    return request<Commitment>(
+      `/workspaces/${workspaceId}/commitments/${commitmentId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }
+    );
+  },
+
+  async deleteCommitment(
+    workspaceId: string,
+    commitmentId: string
+  ): Promise<void> {
+    return request<void>(
+      `/workspaces/${workspaceId}/commitments/${commitmentId}`,
+      {
+        method: "DELETE",
       }
     );
   },

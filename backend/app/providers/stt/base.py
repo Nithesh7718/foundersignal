@@ -393,10 +393,11 @@ class GnaniPrismaSTTProvider(STTProvider):
         language: str = "indic-auto",
     ) -> STTResult:
         """Transcribe short audio (<= 30s) synchronously via REST STT."""
+        norm_lang = "en-IN" if language.lower() in ("en", "english") else language
         headers = self._headers()
         data = {
             "model": "prisma-v3.0",
-            "language_code": language,
+            "language_code": norm_lang,
             "format": "transcribe",
         }
         files = {
@@ -485,9 +486,10 @@ class GnaniPrismaSTTProvider(STTProvider):
             )
 
         headers = self._headers()
+        norm_lang = "en-IN" if language.lower() in ("en", "english") else language
         config_payload = {
             "model": "prisma-v3.0",
-            "language_code": language,
+            "language_code": norm_lang,
             "format": "transcribe",
             "mode": "transcribe",
             "with_diarization": with_diarization,

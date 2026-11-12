@@ -3,7 +3,11 @@ from pathlib import Path
 from typing import BinaryIO
 
 from app.core.config import settings
-from app.core.exceptions import PayloadTooLargeException, ValidationException
+from app.core.exceptions import (
+    NotFoundException,
+    PayloadTooLargeException,
+    ValidationException,
+)
 from app.core.storage.base import StorageAdapter
 
 
@@ -129,11 +133,35 @@ class LocalStorageAdapter(StorageAdapter):
     async def get_file_bytes(self, storage_path: str) -> bytes:
         """Read audio file bytes from storage."""
         full_path = (self.base_dir / storage_path).resolve()
-        if not full_path.is_relative_to(self.base_dir) or not full_path.exists():
-            raise ValidationException("Requested audio file does not exist or invalid path.")
+        if not full_path.is_relative_to(self.base_dir):
+            raise ValidationException("Path traversal attempt detected.")
+        if not full_path.exists():
+            raise NotFoundException("Requested audio file does not exist.")
 
         with open(full_path, "rb") as f:
             return f.read()
+
+    async def get_file_size(self, storage_path: str) -> int:
+        """Get stored file size in bytes without loading contents into memory."""
+        full_path = (self.base_dir / storage_path).resolve()
+        if not full_path.is_relative_to(self.base_dir):
+            raise ValidationException("Path traversal attempt detected.")
+        if not full_path.exists():
+            raise NotFoundException("Requested audio file does not exist.")
+        return full_path.stat().st_size
+
+    async def get_file_slice(self, storage_path: str, start: int, end: int) -> bytes:
+        """Retrieve a specific byte slice [start, end] inclusive from storage."""
+        full_path = (self.base_dir / storage_path).resolve()
+        if not full_path.is_relative_to(self.base_dir):
+            raise ValidationException("Path traversal attempt detected.")
+        if not full_path.exists():
+            raise NotFoundException("Requested audio file does not exist.")
+
+        length = end - start + 1
+        with open(full_path, "rb") as f:
+            f.seek(start)
+            return f.read(length)
 
     async def delete_file(self, storage_path: str) -> bool:
         """Delete audio file from storage."""

@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "mock"
     LLM_API_KEY: str = ""
     LLM_MODEL: str = "gpt-4o-mini"
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-3.8-flash"
 
     # Background Worker Configuration
     WORKER_ENABLED: bool = True
@@ -101,7 +103,12 @@ class Settings(BaseSettings):
                 raise ValueError("GNANI_PRISMA_API_KEY is required in production.")
             if not self.TIMBRE_API_KEY:
                 raise ValueError("TIMBRE_API_KEY is required in production.")
-            if not self.LLM_API_KEY:
+            if self.LLM_PROVIDER.lower() == "gemini":
+                if not (self.GEMINI_API_KEY or self.LLM_API_KEY):
+                    raise ValueError(
+                        "GEMINI_API_KEY is required in production when LLM_PROVIDER is 'gemini'."
+                    )
+            elif not self.LLM_API_KEY:
                 raise ValueError("LLM_API_KEY is required in production.")
 
         return self

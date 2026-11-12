@@ -141,57 +141,62 @@ export default function ConversationsPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {conversations.map((conv) => (
-            <Card
+            <Link
               key={conv.id}
-              className="hover:border-primary/50 transition-colors shadow-sm flex flex-col justify-between"
+              href={`/conversations/${conv.id}`}
+              className="block group focus:outline-none"
+              data-testid={`conversation-card-${conv.id}`}
             >
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-2">
-                  <Badge variant="outline" className="text-xs uppercase tracking-wider font-semibold">
-                    {conv.conversation_type}
-                  </Badge>
-                  <Badge
-                    variant={
-                      conv.status === "uploaded" || conv.status === "completed"
-                        ? "success"
-                        : "secondary"
-                    }
-                    className="capitalize text-[11px]"
-                  >
-                    {conv.status}
-                  </Badge>
-                </div>
-                <CardTitle className="text-base font-semibold line-clamp-2 mt-2">
-                  {conv.title}
-                </CardTitle>
-              </CardHeader>
-
-              <CardContent className="pt-0 space-y-3 text-xs text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-3.5 w-3.5 shrink-0" />
-                  <span>
-                    {new Date(conv.recorded_at || conv.created_at).toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between border-t pt-3">
-                  <div className="flex items-center gap-1.5 font-medium text-foreground">
-                    <FileAudio className="h-3.5 w-3.5 text-primary" />
-                    <span>{conv.audio_assets?.length || 0} Audio</span>
+              <Card className="h-full group-hover:border-primary/60 group-hover:shadow-md transition-all flex flex-col justify-between cursor-pointer">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <Badge variant="outline" className="text-xs uppercase tracking-wider font-semibold">
+                      {conv.conversation_type}
+                    </Badge>
+                    <Badge
+                      variant={
+                        conv.status === "uploaded" || conv.status === "completed"
+                          ? "success"
+                          : "secondary"
+                      }
+                      className="capitalize text-[11px]"
+                    >
+                      {conv.status}
+                    </Badge>
                   </div>
-                  <div className="flex items-center gap-1.5 font-medium text-foreground">
-                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                    <span>{conv.commitments_count || 0} Commitments</span>
+                  <CardTitle className="text-base font-semibold line-clamp-2 mt-2 group-hover:text-primary transition-colors">
+                    {conv.title}
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent className="pt-0 space-y-3 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      {new Date(conv.recorded_at || conv.created_at).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </span>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+
+                  <div className="flex items-center justify-between border-t pt-3">
+                    <div className="flex items-center gap-1.5 font-medium text-foreground">
+                      <FileAudio className="h-3.5 w-3.5 text-primary" />
+                      <span>{conv.audio_assets?.length || 0} Audio</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 font-medium text-foreground">
+                      <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>{conv.commitments_count || 0} Commitments</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
           ))}
         </div>
+
       )}
     </div>
   );

@@ -47,6 +47,10 @@ nosetests.xml
 coverage.xml
 *.cover
 *.py,cover
+test-results/
+frontend/test-results/
+playwright-report/
+blob-report/
 
 # Node / Next.js
 *.tsbuildinfo

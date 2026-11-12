@@ -182,6 +182,16 @@ class TranscriptionJobService:
         conversation_id: uuid.UUID,
     ) -> list[TranscriptionJob]:
         """List all transcription jobs for a conversation scoped to workspace."""
+        # Verify conversation belongs to workspace to prevent cross-workspace enumeration
+        conv = db.execute(
+            select(Conversation.id).where(
+                Conversation.id == conversation_id,
+                Conversation.workspace_id == workspace_id,
+            )
+        ).scalar_one_or_none()
+        if not conv:
+            raise NotFoundException("Conversation", conversation_id)
+
         return list(
             db.execute(
                 select(TranscriptionJob)

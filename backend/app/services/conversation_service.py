@@ -130,3 +130,37 @@ class ConversationService:
 
         for path in storage_paths:
             await storage.delete_file(path)
+
+    @staticmethod
+    def get_audio_asset_metadata(
+        db: Session,
+        workspace_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        audio_asset_id: uuid.UUID,
+    ) -> AudioAsset:
+        """Fetch audio asset metadata after verifying tenant isolation."""
+        conversation = ConversationService.get_conversation(db, workspace_id, conversation_id)
+        stmt = select(AudioAsset).where(
+            AudioAsset.id == audio_asset_id,
+            AudioAsset.conversation_id == conversation.id,
+            AudioAsset.workspace_id == workspace_id,
+        )
+        asset = db.execute(stmt).scalar_one_or_none()
+        if not asset:
+            raise NotFoundException("Audio asset not found in this conversation.")
+        return asset
+
+    @staticmethod
+    async def get_audio_asset(
+        db: Session,
+        workspace_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        audio_asset_id: uuid.UUID,
+        storage: StorageAdapter,
+    ) -> tuple[AudioAsset, bytes]:
+        """Fetch audio asset metadata and file bytes after verifying tenant isolation."""
+        asset = ConversationService.get_audio_asset_metadata(
+            db, workspace_id, conversation_id, audio_asset_id
+        )
+        file_bytes = await storage.get_file_bytes(asset.storage_path)
+        return asset, file_bytes

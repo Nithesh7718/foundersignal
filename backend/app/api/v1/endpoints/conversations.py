@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
@@ -138,4 +138,97 @@ async def delete_conversation(
         workspace_id=workspace.id,
         conversation_id=conversation_id,
         storage=storage,
+    )
+
+
+@router.get(
+    "/workspaces/{workspace_id}/conversations/{conversation_id}/audio/{audio_asset_id}",
+    response_class=Response,
+)
+async def get_conversation_audio_file(
+    conversation_id: uuid.UUID,
+    audio_asset_id: uuid.UUID,
+    workspace_context: Annotated[tuple[Workspace, str], Depends(get_current_workspace_context)],
+    db: Annotated[Session, Depends(get_db)],
+    storage: Annotated[StorageAdapter, Depends(get_storage_adapter)],
+    range_header: Annotated[str | None, Header(alias="range")] = None,
+) -> Response:
+    """Retrieve raw audio file bytes with genuine HTTP Range (206), 200, and 416 support."""
+    workspace, _role = workspace_context
+    asset = ConversationService.get_audio_asset_metadata(
+        db=db,
+        workspace_id=workspace.id,
+        conversation_id=conversation_id,
+        audio_asset_id=audio_asset_id,
+    )
+
+    total_size = await storage.get_file_size(asset.storage_path)
+
+    if range_header:
+        if not range_header.startswith("bytes="):
+            return Response(
+                status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+                headers={"Content-Range": f"bytes */{total_size}", "Accept-Ranges": "bytes"},
+            )
+
+        range_val = range_header[len("bytes=") :].strip()
+        parts = range_val.split("-")
+        if len(parts) != 2:
+            return Response(
+                status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+                headers={"Content-Range": f"bytes */{total_size}", "Accept-Ranges": "bytes"},
+            )
+
+        start_str, end_str = parts[0].strip(), parts[1].strip()
+        try:
+            if start_str and end_str:
+                start = int(start_str)
+                end = int(end_str)
+            elif start_str and not end_str:
+                start = int(start_str)
+                end = total_size - 1
+            elif not start_str and end_str:
+                suffix_len = int(end_str)
+                start = max(0, total_size - suffix_len)
+                end = total_size - 1
+            else:
+                raise ValueError("Empty range bounds")
+        except ValueError:
+            return Response(
+                status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+                headers={"Content-Range": f"bytes */{total_size}", "Accept-Ranges": "bytes"},
+            )
+
+        if start < 0 or start >= total_size or end < start:
+            return Response(
+                status_code=status.HTTP_416_RANGE_NOT_SATISFIABLE,
+                headers={"Content-Range": f"bytes */{total_size}", "Accept-Ranges": "bytes"},
+            )
+
+        end = min(end, total_size - 1)
+        slice_bytes = await storage.get_file_slice(asset.storage_path, start, end)
+        content_length = len(slice_bytes)
+
+        return Response(
+            content=slice_bytes,
+            status_code=status.HTTP_206_PARTIAL_CONTENT,
+            media_type=asset.mime_type,
+            headers={
+                "Content-Range": f"bytes {start}-{end}/{total_size}",
+                "Content-Length": str(content_length),
+                "Accept-Ranges": "bytes",
+                "Content-Disposition": f'inline; filename="{asset.file_name}"',
+            },
+        )
+
+    file_bytes = await storage.get_file_bytes(asset.storage_path)
+    return Response(
+        content=file_bytes,
+        status_code=status.HTTP_200_OK,
+        media_type=asset.mime_type,
+        headers={
+            "Content-Length": str(total_size),
+            "Accept-Ranges": "bytes",
+            "Content-Disposition": f'inline; filename="{asset.file_name}"',
+        },
     )

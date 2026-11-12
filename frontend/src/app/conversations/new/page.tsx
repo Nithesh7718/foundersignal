@@ -284,30 +284,38 @@ export default function NewConversationPage() {
             </div>
           </CardContent>
 
-          <div className="p-6 pt-0 flex items-center justify-end gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              asChild
-              disabled={uploadStatus === "uploading" || uploadStatus === "creating"}
-            >
-              <Link href="/conversations">Cancel</Link>
-            </Button>
-            <Button
-              type="submit"
-              disabled={
-                !selectedFile ||
-                !title.trim() ||
-                uploadStatus === "uploading" ||
-                uploadStatus === "creating" ||
-                uploadStatus === "success"
-              }
-            >
-              {uploadStatus === "creating" && "Initializing conversation..."}
-              {uploadStatus === "uploading" && "Uploading audio file..."}
-              {uploadStatus === "success" && "Uploaded!"}
-              {(uploadStatus === "idle" || uploadStatus === "error") && "Upload Audio"}
-            </Button>
+          <div className="p-6 pt-0 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground order-2 sm:order-1 text-center sm:text-left">
+              {!title.trim() && !selectedFile && "Enter a conversation title and select an audio file to continue."}
+              {title.trim() && !selectedFile && "Please select or drop an audio recording file."}
+              {!title.trim() && selectedFile && "Please enter a conversation title."}
+              {title.trim() && selectedFile && "Ready to upload and process."}
+            </p>
+            <div className="flex items-center gap-3 order-1 sm:order-2 w-full sm:w-auto justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                asChild
+                disabled={uploadStatus === "uploading" || uploadStatus === "creating"}
+              >
+                <Link href="/conversations">Cancel</Link>
+              </Button>
+              <Button
+                type="submit"
+                disabled={
+                  !selectedFile ||
+                  !title.trim() ||
+                  uploadStatus === "uploading" ||
+                  uploadStatus === "creating" ||
+                  uploadStatus === "success"
+                }
+              >
+                {uploadStatus === "creating" && "Initializing conversation..."}
+                {uploadStatus === "uploading" && "Uploading audio file..."}
+                {uploadStatus === "success" && "Uploaded!"}
+                {(uploadStatus === "idle" || uploadStatus === "error") && "Upload Audio"}
+              </Button>
+            </div>
           </div>
         </form>
       </Card>

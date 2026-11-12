@@ -1,5 +1,9 @@
 from app.schemas.audio import AudioAssetResponse
-from app.schemas.commitment import CommitmentResponse
+from app.schemas.commitment import (
+    CommitmentCreate,
+    CommitmentResponse,
+    CommitmentUpdate,
+)
 from app.schemas.conversation import (
     ConversationCreate,
     ConversationDetailResponse,
@@ -33,7 +37,9 @@ __all__ = [
     "ConversationDetailResponse",
     "AudioAssetResponse",
     "TranscriptResponse",
+    "CommitmentCreate",
     "CommitmentResponse",
+    "CommitmentUpdate",
     "TranscriptionJobCreate",
     "TranscriptionJobResponse",
 ]

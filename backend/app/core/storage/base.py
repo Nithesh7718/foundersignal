@@ -40,6 +40,16 @@ class StorageAdapter(ABC):
         pass
 
     @abstractmethod
+    async def get_file_size(self, storage_path: str) -> int:
+        """Get stored file size in bytes without loading contents into memory."""
+        pass
+
+    @abstractmethod
+    async def get_file_slice(self, storage_path: str, start: int, end: int) -> bytes:
+        """Retrieve a specific byte slice [start, end] inclusive from storage."""
+        pass
+
+    @abstractmethod
     async def delete_file(self, storage_path: str) -> bool:
         """Delete stored file from storage."""
         pass
