@@ -40,6 +40,7 @@ export interface Commitment {
   timestamp_start?: number;
   timestamp_end?: number;
   assignee_id?: string;
+  project_id?: string | null;
   due_date?: string;
   evidence_hash?: string | null;
   reviewed_by_id?: string | null;
@@ -109,6 +110,8 @@ export interface CommitmentCreateInput {
   speaker?: string;
   timestamp_start?: number;
   timestamp_end?: number;
+  assignee_id?: string;
+  project_id?: string | null;
   due_date?: string;
 }
 
@@ -118,6 +121,93 @@ export interface CommitmentUpdateInput {
   status?: string;
   due_date?: string;
   assignee_id?: string;
+  project_id?: string | null;
+}
+
+export interface WorkspaceMember {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  email: string;
+  full_name: string;
+  role: string;
+  created_at: string;
+}
+
+export interface Project {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description?: string | null;
+  status: string;
+  target_date?: string | null;
+  created_at: string;
+  updated_at: string;
+  total_commitments: number;
+  completed_commitments: number;
+  in_progress_commitments: number;
+  confirmed_commitments: number;
+  inferred_commitments: number;
+  overdue_commitments: number;
+}
+
+export interface ProjectCreateInput {
+  name: string;
+  description?: string;
+  status?: string;
+  target_date?: string;
+}
+
+export interface ProjectUpdateInput {
+  name?: string;
+  description?: string;
+  status?: string;
+  target_date?: string;
+}
+
+export interface ProjectDeliverySummary {
+  total_projects: number;
+  active_projects: number;
+  completed_projects: number;
+  total_commitments: number;
+  completed_commitments: number;
+  in_progress_commitments: number;
+  overdue_commitments: number;
+  delivery_completion_rate: number;
+}
+
+export interface EvidenceGraphNode {
+  id: string;
+  label: string;
+  type: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface EvidenceGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  label: string;
+  type: string;
+}
+
+export interface EvidenceGraph {
+  workspace_id: string;
+  nodes: EvidenceGraphNode[];
+  edges: EvidenceGraphEdge[];
+  total_conversations: number;
+  total_audio_assets: number;
+  total_transcripts: number;
+  total_commitments: number;
+  total_projects: number;
+}
+
+export interface HealthStatus {
+  status: string;
+  service: string;
+  version: string;
+  environment?: string;
+  database_connected: boolean;
 }
 
 export interface AuthResponse {
@@ -381,7 +471,97 @@ export const api = {
     );
   },
 
+  async listWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[]> {
+    return request<WorkspaceMember[]>(`/workspaces/${workspaceId}/members`);
+  },
+
+  async updateWorkspace(
+    workspaceId: string,
+    data: { name?: string; slug?: string }
+  ): Promise<Workspace> {
+    return request<Workspace>(`/workspaces/${workspaceId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Health
+  async getHealth(): Promise<HealthStatus> {
+    return request<HealthStatus>("/health/ready");
+  },
+
+  // Projects & Delivery
+  async listProjects(workspaceId: string, status?: string): Promise<Project[]> {
+    const query = status ? `?status=${encodeURIComponent(status)}` : "";
+    return request<Project[]>(`/workspaces/${workspaceId}/projects${query}`);
+  },
+
+  async createProject(
+    workspaceId: string,
+    data: ProjectCreateInput
+  ): Promise<Project> {
+    return request<Project>(`/workspaces/${workspaceId}/projects`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getProject(workspaceId: string, projectId: string): Promise<Project> {
+    return request<Project>(`/workspaces/${workspaceId}/projects/${projectId}`);
+  },
+
+  async updateProject(
+    workspaceId: string,
+    projectId: string,
+    data: ProjectUpdateInput
+  ): Promise<Project> {
+    return request<Project>(`/workspaces/${workspaceId}/projects/${projectId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteProject(
+    workspaceId: string,
+    projectId: string
+  ): Promise<void> {
+    return request<void>(`/workspaces/${workspaceId}/projects/${projectId}`, {
+      method: "DELETE",
+    });
+  },
+
+  async getDeliverySummary(
+    workspaceId: string
+  ): Promise<ProjectDeliverySummary> {
+    return request<ProjectDeliverySummary>(
+      `/workspaces/${workspaceId}/projects/delivery/summary`
+    );
+  },
+
+  // Evidence Graph
+  async getEvidenceGraph(workspaceId: string): Promise<EvidenceGraph> {
+    return request<EvidenceGraph>(`/workspaces/${workspaceId}/evidence/graph`);
+  },
+
   // Commitments
+  async listWorkspaceCommitments(
+    workspaceId: string,
+    status?: string,
+    projectId?: string,
+    limit?: number,
+    offset?: number
+  ): Promise<Commitment[]> {
+    const params = new URLSearchParams();
+    if (status) params.append("status", status);
+    if (projectId) params.append("project_id", projectId);
+    if (limit !== undefined) params.append("limit", String(limit));
+    if (offset !== undefined) params.append("offset", String(offset));
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return request<Commitment[]>(
+      `/workspaces/${workspaceId}/commitments${query}`
+    );
+  },
+
   async listCommitments(
     workspaceId: string,
     conversationId: string

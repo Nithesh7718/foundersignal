@@ -1,11 +1,13 @@
 import uuid
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictException, ForbiddenException, NotFoundException
+from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMembership
-from app.schemas.workspace import WorkspaceCreate
+from app.schemas.workspace import WorkspaceCreate, WorkspaceUpdate
 from app.services.auth_service import slugify
 
 
@@ -105,3 +107,67 @@ class WorkspaceService:
             raise ForbiddenException("Access denied: You are not a member of this workspace.")
 
         return membership
+
+    @staticmethod
+    def list_workspace_members(
+        db: Session,
+        workspace_id: uuid.UUID,
+    ) -> list[dict[str, Any]]:
+        stmt = (
+            select(
+                WorkspaceMembership.id,
+                WorkspaceMembership.workspace_id,
+                WorkspaceMembership.user_id,
+                User.email,
+                User.full_name,
+                WorkspaceMembership.role,
+                WorkspaceMembership.created_at,
+            )
+            .join(User, WorkspaceMembership.user_id == User.id)
+            .where(WorkspaceMembership.workspace_id == workspace_id)
+            .order_by(WorkspaceMembership.created_at.asc())
+        )
+        rows = db.execute(stmt).all()
+        return [
+            {
+                "id": r.id,
+                "workspace_id": r.workspace_id,
+                "user_id": r.user_id,
+                "email": r.email,
+                "full_name": r.full_name,
+                "role": r.role,
+                "created_at": r.created_at,
+            }
+            for r in rows
+        ]
+
+    @staticmethod
+    def update_workspace(
+        db: Session,
+        workspace_id: uuid.UUID,
+        ws_in: WorkspaceUpdate,
+        role: str,
+    ) -> Workspace:
+        if role not in ("owner", "admin"):
+            raise ForbiddenException(
+                "Only workspace owners and admins can update workspace settings."
+            )
+
+        ws = db.execute(select(Workspace).where(Workspace.id == workspace_id)).scalar_one_or_none()
+        if not ws:
+            raise NotFoundException("Workspace not found.")
+
+        if ws_in.name is not None and ws_in.name.strip():
+            ws.name = ws_in.name.strip()
+        if ws_in.slug is not None and ws_in.slug.strip():
+            candidate = ws_in.slug.strip().lower()
+            existing = db.execute(
+                select(Workspace).where(Workspace.slug == candidate, Workspace.id != workspace_id)
+            ).scalar_one_or_none()
+            if existing:
+                raise ConflictException("Workspace with this slug already exists.")
+            ws.slug = candidate
+
+        db.commit()
+        db.refresh(ws)
+        return ws

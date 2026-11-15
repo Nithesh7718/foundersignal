@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -16,6 +16,8 @@ import {
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 export interface NavItem {
   name: string;
@@ -24,16 +26,6 @@ export interface NavItem {
   badge?: string;
 }
 
-export const navItems: NavItem[] = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Conversations & Audio", href: "/conversations", icon: Mic },
-  { name: "Extracted Commitments", href: "/conversations", icon: FileText },
-  { name: "Founder Approvals", href: "/conversations", icon: ShieldCheck, badge: "0" },
-  { name: "Evidence Graph", href: "#", icon: Network },
-  { name: "Projects & Delivery", href: "#", icon: FolderKanban },
-  { name: "Settings", href: "#", icon: Settings },
-];
-
 interface SidebarProps {
   onClose?: () => void;
   className?: string;
@@ -41,6 +33,46 @@ interface SidebarProps {
 
 export function SidebarContent({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
+  const { user, activeWorkspace } = useAuth();
+  const [pendingApprovalsCount, setPendingApprovalsCount] = useState<number>(0);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchPendingCount() {
+      if (!user || !activeWorkspace) {
+        if (isMounted) setPendingApprovalsCount(0);
+        return;
+      }
+      try {
+        const inferred = await api.listWorkspaceCommitments(activeWorkspace.id, "inferred");
+        if (isMounted) {
+          setPendingApprovalsCount(inferred.length);
+        }
+      } catch {
+        // Fallback silently if offline or unauthenticated
+      }
+    }
+
+    fetchPendingCount();
+    return () => {
+      isMounted = false;
+    };
+  }, [user, activeWorkspace]);
+
+  const navItems: NavItem[] = [
+    { name: "Dashboard", href: "/", icon: LayoutDashboard },
+    { name: "Conversations & Audio", href: "/conversations", icon: Mic },
+    { name: "Extracted Commitments", href: "/#approvals-section", icon: FileText },
+    {
+      name: "Founder Approvals",
+      href: "/#approvals-section",
+      icon: ShieldCheck,
+      badge: String(pendingApprovalsCount),
+    },
+    { name: "Evidence Graph", href: "/evidence", icon: Network },
+    { name: "Projects & Delivery", href: "/projects", icon: FolderKanban },
+    { name: "Settings", href: "/settings", icon: Settings },
+  ];
 
   return (
     <div className="flex flex-col justify-between h-full">
@@ -85,6 +117,7 @@ export function SidebarContent({ onClose }: { onClose?: () => void }) {
                 key={item.name}
                 href={item.href}
                 onClick={onClose}
+                data-testid={`nav-${item.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
                 className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                   isActive
                     ? "bg-primary/10 text-primary font-semibold"
@@ -96,7 +129,14 @@ export function SidebarContent({ onClose }: { onClose?: () => void }) {
                   <span>{item.name}</span>
                 </div>
                 {item.badge && (
-                  <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-semibold">
+                  <Badge
+                    variant={item.badge !== "0" ? "secondary" : "secondary"}
+                    className={`text-[10px] h-5 px-1.5 font-semibold ${
+                      item.badge !== "0"
+                        ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border-amber-500/30"
+                        : ""
+                    }`}
+                  >
                     {item.badge}
                   </Badge>
                 )}

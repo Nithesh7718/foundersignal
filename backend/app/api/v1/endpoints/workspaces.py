@@ -4,9 +4,15 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import get_current_user, get_current_workspace_context, get_db
 from app.models.user import User
-from app.schemas.workspace import WorkspaceCreate, WorkspaceResponse
+from app.models.workspace import Workspace
+from app.schemas.workspace import (
+    WorkspaceCreate,
+    WorkspaceMemberResponse,
+    WorkspaceResponse,
+    WorkspaceUpdate,
+)
 from app.services.workspace_service import WorkspaceService
 
 router = APIRouter()
@@ -66,3 +72,39 @@ def get_workspace(
         role=role,
         created_at=ws.created_at,
     )
+
+
+@router.patch("/{workspace_id}", response_model=WorkspaceResponse)
+def update_workspace(
+    workspace_id: uuid.UUID,
+    ws_in: WorkspaceUpdate,
+    workspace_context: Annotated[tuple[Workspace, str], Depends(get_current_workspace_context)],
+    db: Annotated[Session, Depends(get_db)],
+) -> WorkspaceResponse:
+    """Update workspace details (owner and admin only)."""
+    workspace, role = workspace_context
+    updated = WorkspaceService.update_workspace(
+        db=db,
+        workspace_id=workspace.id,
+        ws_in=ws_in,
+        role=role,
+    )
+    return WorkspaceResponse(
+        id=updated.id,
+        name=updated.name,
+        slug=updated.slug,
+        owner_id=updated.owner_id,
+        role=role,
+        created_at=updated.created_at,
+    )
+
+
+@router.get("/{workspace_id}/members", response_model=list[WorkspaceMemberResponse])
+def list_workspace_members(
+    workspace_context: Annotated[tuple[Workspace, str], Depends(get_current_workspace_context)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[WorkspaceMemberResponse]:
+    """List all members and their roles in the workspace."""
+    workspace, _role = workspace_context
+    members = WorkspaceService.list_workspace_members(db, workspace.id)
+    return [WorkspaceMemberResponse.model_validate(m) for m in members]

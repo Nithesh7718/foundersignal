@@ -9,6 +9,11 @@ class WorkspaceCreate(BaseModel):
     slug: str | None = Field(None, min_length=2, max_length=100)
 
 
+class WorkspaceUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=100)
+    slug: str | None = Field(None, min_length=2, max_length=100)
+
+
 class WorkspaceResponse(BaseModel):
     id: uuid.UUID
     name: str

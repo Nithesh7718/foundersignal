@@ -132,6 +132,29 @@ class CommitmentService:
         return db.execute(stmt).scalars().all()
 
     @staticmethod
+    def list_workspace_commitments(
+        db: Session,
+        workspace_id: uuid.UUID,
+        status: str | None = None,
+        project_id: uuid.UUID | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Sequence[Commitment]:
+        """List commitments across workspace with optional status/project filter and pagination."""
+        if status:
+            if status not in VALID_COMMITMENT_STATUSES:
+                allowed = ", ".join(sorted(VALID_COMMITMENT_STATUSES))
+                raise ValidationException(f"Invalid status '{status}'. Allowed: {allowed}")
+
+        stmt = select(Commitment).where(Commitment.workspace_id == workspace_id)
+        if status:
+            stmt = stmt.where(Commitment.status == status)
+        if project_id:
+            stmt = stmt.where(Commitment.project_id == project_id)
+        stmt = stmt.order_by(Commitment.created_at.desc()).offset(offset).limit(limit)
+        return db.execute(stmt).scalars().all()
+
+    @staticmethod
     def get_commitment(
         db: Session,
         workspace_id: uuid.UUID,
@@ -169,6 +192,18 @@ class CommitmentService:
                 f"Invalid status '{commitment_in.status}'. Allowed: {allowed}"
             )
 
+        if commitment_in.project_id:
+            from app.models.project import Project
+
+            proj = db.execute(
+                select(Project).where(
+                    Project.id == commitment_in.project_id,
+                    Project.workspace_id == workspace_id,
+                )
+            ).scalar_one_or_none()
+            if not proj:
+                raise NotFoundException("Project not found in this workspace.")
+
         ev_hash = commitment_in.evidence_hash or compute_evidence_hash(
             conversation_id, commitment_in.source_quote, commitment_in.title
         )
@@ -176,6 +211,7 @@ class CommitmentService:
         commitment = Commitment(
             workspace_id=workspace_id,
             conversation_id=conversation_id,
+            project_id=commitment_in.project_id,
             title=commitment_in.title.strip(),
             description=commitment_in.description.strip() if commitment_in.description else None,
             status=commitment_in.status,
@@ -281,6 +317,22 @@ class CommitmentService:
 
         if update_in.assignee_id is not None:
             commitment.assignee_id = update_in.assignee_id
+
+        if "project_id" in update_in.model_fields_set:
+            if update_in.project_id is not None:
+                from app.models.project import Project
+
+                proj = db.execute(
+                    select(Project).where(
+                        Project.id == update_in.project_id,
+                        Project.workspace_id == workspace_id,
+                    )
+                ).scalar_one_or_none()
+                if not proj:
+                    raise NotFoundException("Project not found in this workspace.")
+                commitment.project_id = update_in.project_id
+            else:
+                commitment.project_id = None
 
         db.commit()
         db.refresh(commitment)

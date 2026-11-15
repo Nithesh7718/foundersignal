@@ -8,6 +8,7 @@ from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.conversation import Conversation
+    from app.models.project import Project
     from app.models.user import User
 
 
@@ -40,6 +41,11 @@ class Workspace(Base, TimestampMixin):
     )
     conversations: Mapped[list["Conversation"]] = relationship(
         "Conversation",
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+    )
+    projects: Mapped[list["Project"]] = relationship(
+        "Project",
         back_populates="workspace",
         cascade="all, delete-orphan",
     )

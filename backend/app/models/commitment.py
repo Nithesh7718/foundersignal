@@ -9,6 +9,7 @@ from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.conversation import Conversation
+    from app.models.project import Project
     from app.models.user import User
 
 
@@ -88,6 +89,11 @@ class Commitment(Base, TimestampMixin):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
     due_date: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
@@ -95,6 +101,10 @@ class Commitment(Base, TimestampMixin):
 
     conversation: Mapped["Conversation"] = relationship(
         "Conversation",
+        back_populates="commitments",
+    )
+    project: Mapped["Project | None"] = relationship(
+        "Project",
         back_populates="commitments",
     )
     assignee: Mapped["User | None"] = relationship(

@@ -3,7 +3,9 @@ from fastapi import APIRouter
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.commitments import router as commitments_router
 from app.api.v1.endpoints.conversations import router as conversations_router
+from app.api.v1.endpoints.evidence import router as evidence_router
 from app.api.v1.endpoints.health import router as health_router
+from app.api.v1.endpoints.projects import router as projects_router
 from app.api.v1.endpoints.transcription_jobs import router as transcription_jobs_router
 from app.api.v1.endpoints.workspaces import router as workspaces_router
 
@@ -14,3 +16,5 @@ api_router.include_router(workspaces_router, prefix="/workspaces", tags=["Worksp
 api_router.include_router(conversations_router, tags=["Conversations"])
 api_router.include_router(transcription_jobs_router, tags=["Transcription Jobs"])
 api_router.include_router(commitments_router, tags=["Commitments"])
+api_router.include_router(projects_router, tags=["Projects"])
+api_router.include_router(evidence_router, tags=["Evidence"])

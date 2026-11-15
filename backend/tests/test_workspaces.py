@@ -101,3 +101,41 @@ def test_user_cannot_set_arbitrary_owner_on_workspace_creation(client: TestClien
     created_ws = res.json()
     # Ensure injected owner_id was ignored and owner is bound strictly to current_user
     assert created_ws["owner_id"] != arbitrary_fake_owner_id
+
+
+def test_list_workspace_members(client: TestClient) -> None:
+    email, token, ws_id = create_authenticated_user(client)
+    res = client.get(
+        f"/api/v1/workspaces/{ws_id}/members",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res.status_code == 200
+    members = res.json()
+    assert len(members) == 1
+    assert members[0]["email"] == email
+    assert members[0]["role"] == "owner"
+    assert "user_id" in members[0]
+    assert "workspace_id" in members[0]
+
+
+def test_update_workspace_settings(client: TestClient) -> None:
+    _email, token, ws_id = create_authenticated_user(client)
+    res = client.patch(
+        f"/api/v1/workspaces/{ws_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"name": "Renamed Signal Corp"},
+    )
+    assert res.status_code == 200
+    updated = res.json()
+    assert updated["name"] == "Renamed Signal Corp"
+
+
+def test_cross_workspace_member_list_blocked(client: TestClient) -> None:
+    _email_a, _token_a, ws_a = create_authenticated_user(client)
+    _email_b, token_b, _ws_b = create_authenticated_user(client)
+
+    res = client.get(
+        f"/api/v1/workspaces/{ws_a}/members",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert res.status_code == 403

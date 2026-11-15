@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_current_workspace_context, get_db
@@ -15,6 +15,31 @@ from app.schemas.commitment import (
 from app.services.commitment_service import CommitmentService
 
 router = APIRouter()
+
+
+@router.get(
+    "/workspaces/{workspace_id}/commitments",
+    response_model=list[CommitmentResponse],
+)
+def list_workspace_commitments(
+    workspace_context: Annotated[tuple[Workspace, str], Depends(get_current_workspace_context)],
+    db: Annotated[Session, Depends(get_db)],
+    status: str | None = Query(None, description="Optional status filter"),
+    project_id: uuid.UUID | None = Query(None, description="Optional project filter"),
+    limit: int = Query(100, ge=1, le=500, description="Page limit"),
+    offset: int = Query(0, ge=0, description="Page offset"),
+) -> list[CommitmentResponse]:
+    """List commitments across workspace with optional status/project filter and pagination."""
+    workspace, _role = workspace_context
+    commitments = CommitmentService.list_workspace_commitments(
+        db=db,
+        workspace_id=workspace.id,
+        status=status,
+        project_id=project_id,
+        limit=limit,
+        offset=offset,
+    )
+    return [CommitmentResponse.model_validate(c) for c in commitments]
 
 
 @router.get(

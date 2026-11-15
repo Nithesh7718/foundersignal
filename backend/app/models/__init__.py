@@ -2,6 +2,7 @@ from app.models.audio_asset import AudioAsset
 from app.models.base import Base, TimestampMixin
 from app.models.commitment import Commitment
 from app.models.conversation import Conversation
+from app.models.project import Project
 from app.models.transcript import Transcript
 from app.models.transcription_job import TranscriptionJob
 from app.models.user import RevokedToken, User
@@ -14,6 +15,7 @@ __all__ = [
     "RevokedToken",
     "Workspace",
     "WorkspaceMembership",
+    "Project",
     "Conversation",
     "AudioAsset",
     "Transcript",

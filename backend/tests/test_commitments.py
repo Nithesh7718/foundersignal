@@ -927,3 +927,63 @@ async def test_gemini_verbatim_quote_and_item_classification(client: TestClient)
         assert results[0].confidence_score is None
         assert results[0].assignee_id is None
         assert results[0].due_date is None
+
+
+def test_list_workspace_commitments_endpoint(client: TestClient) -> None:
+    """Verify listing commitments across an entire workspace with optional status filter."""
+    _email, token, ws_id = create_authenticated_user(client)
+
+    # 1. Create two conversations
+    c1 = client.post(
+        f"/api/v1/workspaces/{ws_id}/conversations",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"title": "Sprint Planning", "conversation_type": "meeting"},
+    ).json()["id"]
+
+    c2 = client.post(
+        f"/api/v1/workspaces/{ws_id}/conversations",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"title": "Client Review", "conversation_type": "client_call"},
+    ).json()["id"]
+
+    # 2. Add commitments to both conversations
+    r1 = client.post(
+        f"/api/v1/workspaces/{ws_id}/conversations/{c1}/commitments",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "title": "Deliver API v2 Spec",
+            "source_quote": "We will deliver API v2 spec.",
+            "status": "inferred",
+        },
+    )
+    assert r1.status_code == 201
+
+    r2 = client.post(
+        f"/api/v1/workspaces/{ws_id}/conversations/{c2}/commitments",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "title": "Deploy staging cluster",
+            "source_quote": "I am deploying staging cluster today.",
+            "status": "in_progress",
+        },
+    )
+    assert r2.status_code == 201
+
+    # 3. List all commitments for workspace
+    res_all = client.get(
+        f"/api/v1/workspaces/{ws_id}/commitments",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res_all.status_code == 200
+    items_all = res_all.json()
+    assert len(items_all) == 2
+
+    # 4. Filter by status
+    res_inferred = client.get(
+        f"/api/v1/workspaces/{ws_id}/commitments?status=inferred",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res_inferred.status_code == 200
+    items_inferred = res_inferred.json()
+    assert len(items_inferred) == 1
+    assert items_inferred[0]["title"] == "Deliver API v2 Spec"

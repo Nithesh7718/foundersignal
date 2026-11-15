@@ -30,6 +30,7 @@ class CommitmentCreate(BaseModel):
     timestamp_start: float | None = None
     timestamp_end: float | None = None
     assignee_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
     due_date: datetime | None = None
     evidence_hash: str | None = None
 
@@ -39,6 +40,7 @@ class CommitmentUpdate(BaseModel):
     description: str | None = None
     status: str | None = Field(None, max_length=50)
     assignee_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
     due_date: datetime | None = None
 
 
@@ -46,6 +48,7 @@ class CommitmentResponse(BaseModel):
     id: uuid.UUID
     workspace_id: uuid.UUID
     conversation_id: uuid.UUID
+    project_id: uuid.UUID | None = None
     title: str
     description: str | None = None
     status: str
