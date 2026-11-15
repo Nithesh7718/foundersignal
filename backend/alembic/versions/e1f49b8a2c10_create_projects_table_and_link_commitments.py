@@ -9,6 +9,7 @@ Create Date: 2026-11-15 14:15:00.000000
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -92,9 +93,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index(op.f("ix_commitments_project_id"), table_name="commitments")
-    op.drop_constraint(
-        "fk_commitments_project_id_projects", "commitments", type_="foreignkey"
-    )
+    op.drop_constraint("fk_commitments_project_id_projects", "commitments", type_="foreignkey")
     op.drop_column("commitments", "project_id")
 
     op.drop_index("ix_projects_workspace_status", table_name="projects")

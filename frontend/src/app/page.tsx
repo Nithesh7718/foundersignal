@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 import {
   Card,
   CardContent,
@@ -1162,8 +1161,6 @@ export default function FounderOperatingCockpit() {
           </div>
         </CardContent>
       </Card>
-
-      <SpeedInsights />
     </div>
   );
 }
