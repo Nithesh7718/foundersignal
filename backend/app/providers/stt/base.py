@@ -311,6 +311,22 @@ class GnaniPrismaSTTProvider(STTProvider):
     def is_mock(self) -> bool:
         return False
 
+    @staticmethod
+    def _get_audio_content_type(filename: str) -> str:
+        """Derive standard audio MIME content type from filename extension."""
+        ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+        content_types = {
+            "wav": "audio/wav",
+            "webm": "audio/webm",
+            "ogg": "audio/ogg",
+            "mp3": "audio/mpeg",
+            "m4a": "audio/mp4",
+            "mp4": "audio/mp4",
+            "flac": "audio/flac",
+            "aac": "audio/aac",
+        }
+        return content_types.get(ext, "audio/wav")
+
     def _headers(self) -> dict[str, str]:
         if not self._api_key:
             raise ExternalProviderException(
@@ -400,8 +416,9 @@ class GnaniPrismaSTTProvider(STTProvider):
             "language_code": norm_lang,
             "format": "transcribe",
         }
+        content_type = self._get_audio_content_type(filename or "audio.wav")
         files = {
-            "audio_file": (filename or "audio.wav", audio_bytes, "audio/wav"),
+            "audio_file": (filename or "audio.wav", audio_bytes, content_type),
         }
 
         response = await self._request_with_retry(
@@ -498,8 +515,9 @@ class GnaniPrismaSTTProvider(STTProvider):
         data = {
             "config": json.dumps(config_payload),
         }
+        content_type = self._get_audio_content_type(filename or "audio.wav")
         files = {
-            "files": (filename or "audio.wav", audio_bytes, "audio/wav"),
+            "files": (filename or "audio.wav", audio_bytes, content_type),
         }
 
         response = await self._request_with_retry(

@@ -590,3 +590,53 @@ async def test_transcript_persistence_preserves_none_confidence_for_rest_stt() -
         )
         assert transcript.confidence is None
         assert transcript.confidence != 1.0
+
+
+@pytest.mark.asyncio
+async def test_gnani_prisma_content_type_detection() -> None:
+    """Verify that Gnani Prisma STT provider dynamically derives correct MIME content-type."""
+    provider = GnaniPrismaSTTProvider(
+        api_key="test_key",
+        rest_endpoint="https://api.vachana.ai/stt/v3",
+        batch_endpoint="https://api.vachana.ai/stt/v3/batch/jobs",
+    )
+
+    assert provider._get_audio_content_type("recording.webm") == "audio/webm"
+    assert provider._get_audio_content_type("speech.ogg") == "audio/ogg"
+    assert provider._get_audio_content_type("audio.mp3") == "audio/mpeg"
+    assert provider._get_audio_content_type("clip.m4a") == "audio/mp4"
+    assert provider._get_audio_content_type("sound.flac") == "audio/flac"
+    assert provider._get_audio_content_type("meeting.wav") == "audio/wav"
+    assert provider._get_audio_content_type("unknown_file") == "audio/wav"
+
+    # Test REST call preserves audio/webm
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "success": True,
+        "transcript": "WebM transcript",
+        "model": "prisma-v3.0",
+    }
+
+    with patch.object(httpx.AsyncClient, "request", new_callable=AsyncMock) as mock_request:
+        mock_request.return_value = mock_resp
+        await provider.transcribe_sync(b"fake_webm_bytes", "recording.webm", "en-IN")
+        call_kwargs = mock_request.call_args.kwargs
+        assert "audio_file" in call_kwargs["files"]
+        filename, data, mime = call_kwargs["files"]["audio_file"]
+        assert filename == "recording.webm"
+        assert mime == "audio/webm"
+
+    # Test Batch call preserves audio/webm
+    mock_create_resp = MagicMock()
+    mock_create_resp.status_code = 201
+    mock_create_resp.json.return_value = {"job_id": "gnani-batch-webm-1", "status": "CREATED"}
+
+    with patch.object(httpx.AsyncClient, "request", new_callable=AsyncMock) as mock_request:
+        mock_request.return_value = mock_create_resp
+        await provider.create_batch_job(b"fake_webm_bytes", "recording.webm", "en-IN")
+        call_kwargs = mock_request.call_args.kwargs
+        assert "files" in call_kwargs["files"]
+        filename, data, mime = call_kwargs["files"]["files"]
+        assert filename == "recording.webm"
+        assert mime == "audio/webm"

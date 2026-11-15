@@ -12,6 +12,7 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
+import { AudioRecorder } from "@/components/audio-recorder";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +30,7 @@ export default function NewConversationPage() {
   const { user, activeWorkspace, loading: authLoading } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [intakeMode, setIntakeMode] = useState<"upload" | "record">("upload");
   const [title, setTitle] = useState("");
   const [conversationType, setConversationType] = useState("voice_note");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -68,6 +70,21 @@ export default function NewConversationPage() {
     }
   };
 
+  const handleRecordingComplete = (file: File) => {
+    setError(null);
+    const validationError = validateFile(file);
+    if (validationError) {
+      setError(validationError);
+      setSelectedFile(null);
+      return;
+    }
+    setSelectedFile(file);
+  };
+
+  const handleRecordingDiscard = () => {
+    setSelectedFile(null);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -83,7 +100,11 @@ export default function NewConversationPage() {
     }
 
     if (!selectedFile) {
-      setError("Please select an audio file to upload.");
+      setError(
+        intakeMode === "record"
+          ? "Please record audio before submitting."
+          : "Please select an audio file to upload."
+      );
       return;
     }
 
@@ -126,6 +147,8 @@ export default function NewConversationPage() {
     );
   }
 
+  const isProcessing = uploadStatus === "creating" || uploadStatus === "uploading";
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
@@ -147,7 +170,7 @@ export default function NewConversationPage() {
               <div>
                 <CardTitle className="text-xl">Upload Conversation Audio</CardTitle>
                 <CardDescription>
-                  Intake raw business audio for transcription and commitment tracking.
+                  Record directly in-browser or upload audio files for AI transcript and commitment extraction.
                 </CardDescription>
               </div>
             </div>
@@ -177,7 +200,7 @@ export default function NewConversationPage() {
                 className="p-3 text-xs rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center gap-2 border border-emerald-500/20"
               >
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
-                <span>Audio successfully uploaded! Redirecting to conversations...</span>
+                <span>Audio successfully attached! Redirecting to conversations...</span>
               </div>
             )}
 
@@ -190,7 +213,7 @@ export default function NewConversationPage() {
                   placeholder="e.g. Weekly Strategy Sync with Co-Founder"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  disabled={uploadStatus === "creating" || uploadStatus === "uploading"}
+                  disabled={isProcessing}
                   required
                 />
               </div>
@@ -201,7 +224,7 @@ export default function NewConversationPage() {
                   id="type"
                   value={conversationType}
                   onChange={(e) => setConversationType(e.target.value)}
-                  disabled={uploadStatus === "creating" || uploadStatus === "uploading"}
+                  disabled={isProcessing}
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                   <option value="voice_note">Voice Note (Founder Monologue / Reflection)</option>
@@ -212,108 +235,188 @@ export default function NewConversationPage() {
               </div>
             </div>
 
-            {/* Audio Dropzone */}
-            <div className="space-y-2">
-              <Label>Audio Recording File</Label>
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOver(true);
-                }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={handleDrop}
-                className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
-                  dragOver
-                    ? "border-primary bg-primary/5"
-                    : selectedFile
-                    ? "border-emerald-500/50 bg-emerald-50/50 dark:bg-emerald-950/20"
-                    : "border-muted hover:border-primary/50 hover:bg-muted/30"
-                }`}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".wav,.mp3,.ogg,.flac,.m4a,.webm"
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      handleFileSelect(e.target.files[0]);
-                    }
-                  }}
-                />
-
-                {selectedFile ? (
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-background border">
-                    <div className="flex items-center gap-3 truncate">
-                      <FileAudio className="h-8 w-8 text-primary shrink-0" />
-                      <div className="text-left truncate">
-                        <p className="text-sm font-medium truncate">{selectedFile.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedFile(null);
-                        if (fileInputRef.current) fileInputRef.current.value = "";
-                      }}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="mx-auto h-10 w-10 rounded-full bg-muted flex items-center justify-center text-muted-foreground">
-                      <UploadCloud className="h-5 w-5" />
-                    </div>
-                    <div className="text-sm">
-                      <span className="font-semibold text-primary">Click to select audio</span> or drag and drop
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      WAV, MP3, OGG, FLAC, M4A, WebM (up to 25MB)
-                    </p>
-                  </div>
+            {/* Audio Intake Mode Selection Tabs: Upload Audio | Record Audio */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Audio Intake Method</Label>
+                {selectedFile && (
+                  <span
+                    data-testid="audio-selected-badge"
+                    className="text-xs text-emerald-600 font-medium"
+                  >
+                    ✓ Audio ready
+                  </span>
                 )}
               </div>
+
+              <div
+                role="tablist"
+                aria-label="Audio intake method"
+                className="grid grid-cols-2 p-1 bg-muted/60 rounded-lg max-w-sm border"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={intakeMode === "upload"}
+                  data-testid="tab-upload-audio"
+                  onClick={() => {
+                    if (!isProcessing) {
+                      setIntakeMode("upload");
+                    }
+                  }}
+                  className={`flex items-center justify-center gap-2 py-2 px-3 rounded-md text-xs font-semibold transition-all ${
+                    intakeMode === "upload"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <UploadCloud className="h-4 w-4" />
+                  Upload Audio
+                </button>
+
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={intakeMode === "record"}
+                  data-testid="tab-record-audio"
+                  onClick={() => {
+                    if (!isProcessing) {
+                      setIntakeMode("record");
+                    }
+                  }}
+                  className={`flex items-center justify-center gap-2 py-2 px-3 rounded-md text-xs font-semibold transition-all ${
+                    intakeMode === "record"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Mic className="h-4 w-4 text-red-500" />
+                  Record Audio
+                </button>
+              </div>
+
+              {/* Mode 1: Drag-and-Drop / File Picker Upload */}
+              {intakeMode === "upload" && (
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOver(true);
+                  }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={handleDrop}
+                  className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
+                    dragOver
+                      ? "border-primary bg-primary/5"
+                      : selectedFile
+                      ? "border-emerald-500/50 bg-emerald-50/50 dark:bg-emerald-950/20"
+                      : "border-muted hover:border-primary/50 hover:bg-muted/30"
+                  }`}
+                  onClick={() => fileInputRef.current?.click()}
+                  data-testid="audio-upload-dropzone"
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".wav,.mp3,.ogg,.flac,.m4a,.webm"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleFileSelect(e.target.files[0]);
+                      }
+                    }}
+                  />
+
+                  {selectedFile ? (
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-background border">
+                      <div className="flex items-center gap-3 truncate">
+                        <FileAudio className="h-8 w-8 text-primary shrink-0" />
+                        <div className="text-left truncate">
+                          <p className="text-sm font-medium truncate">{selectedFile.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedFile(null);
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="mx-auto h-10 w-10 rounded-full bg-muted flex items-center justify-center text-muted-foreground">
+                        <UploadCloud className="h-5 w-5" />
+                      </div>
+                      <div className="text-sm">
+                        <span className="font-semibold text-primary">Click to select audio</span> or drag and drop
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        WAV, MP3, OGG, FLAC, M4A, WebM (up to 25MB)
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Mode 2: In-Browser Native Audio Recording */}
+              {intakeMode === "record" && (
+                <AudioRecorder
+                  onRecordingComplete={handleRecordingComplete}
+                  onRecordingDiscard={handleRecordingDiscard}
+                  disabled={isProcessing}
+                />
+              )}
             </div>
           </CardContent>
 
           <div className="p-6 pt-0 flex flex-col sm:flex-row items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground order-2 sm:order-1 text-center sm:text-left">
-              {!title.trim() && !selectedFile && "Enter a conversation title and select an audio file to continue."}
-              {title.trim() && !selectedFile && "Please select or drop an audio recording file."}
+              {!title.trim() && !selectedFile && (
+                intakeMode === "record"
+                  ? "Record audio and provide a title to proceed."
+                  : "Enter a conversation title and select an audio file to continue."
+              )}
+              {title.trim() && !selectedFile && (
+                intakeMode === "record"
+                  ? "Click the red microphone button above to start recording."
+                  : "Please select or drop an audio recording file."
+              )}
               {!title.trim() && selectedFile && "Please enter a conversation title."}
-              {title.trim() && selectedFile && "Ready to upload and process."}
+              {title.trim() && selectedFile && "Ready to submit and transcribe."}
             </p>
             <div className="flex items-center gap-3 order-1 sm:order-2 w-full sm:w-auto justify-end">
               <Button
                 type="button"
                 variant="outline"
                 asChild
-                disabled={uploadStatus === "uploading" || uploadStatus === "creating"}
+                disabled={isProcessing}
               >
                 <Link href="/conversations">Cancel</Link>
               </Button>
               <Button
                 type="submit"
+                data-testid="submit-audio-btn"
                 disabled={
                   !selectedFile ||
                   !title.trim() ||
-                  uploadStatus === "uploading" ||
-                  uploadStatus === "creating" ||
+                  isProcessing ||
                   uploadStatus === "success"
                 }
               >
                 {uploadStatus === "creating" && "Initializing conversation..."}
                 {uploadStatus === "uploading" && "Uploading audio file..."}
                 {uploadStatus === "success" && "Uploaded!"}
-                {(uploadStatus === "idle" || uploadStatus === "error") && "Upload Audio"}
+                {(uploadStatus === "idle" || uploadStatus === "error") && (
+                  intakeMode === "record" ? "Submit for Transcription" : "Upload Audio"
+                )}
               </Button>
             </div>
           </div>
